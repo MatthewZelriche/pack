@@ -1,0 +1,12 @@
+--- Checks: 'bugprone-*,
+ cert-*,
+clang-analyzer-core.*,
+concurrency-*,
+cppcoreguidelines-*,
+hicpp-*,
+misc-*,
+modernize-*,
+performance-*,
+portability-*,
+readability-*,
+-modernize-use-trailing-return-type'
