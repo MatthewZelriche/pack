@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <stdexcept>
 
 namespace pack {
 
@@ -49,5 +50,61 @@ enum Formats : Byte {
    MAP32        = 0b11011111, // 0xdf       @TODO
 };
 // clang-format on
+
+/*****************************************************************************************
+ ************************************   Serializers   ************************************
+ ****************************************************************************************/
+
+/**
+ * @brief Serializes a boolean value of true or false.
+ * 
+ * @param val The value to serialize
+ * @return ByteArray An array containing the serialized byte(s).
+ */
+inline ByteArray Serialize(bool val) {
+   return (val) ? ByteArray {Formats::BTRUE} : ByteArray {Formats::BFALSE};
+}
+
+/*****************************************************************************************
+ ***********************************   Deserializers   ***********************************
+ ****************************************************************************************/
+
+/**
+ * @brief Recursively deserializes any unrecognized, user-defined type.
+ * 
+ * @tparam T The user-defined type to deserialize.
+ * @param data The data stream to deserialize.
+ * @return T A deserialized instance of the T data type.
+ */
+template<typename T>
+T Deserialize(ByteArray data) {
+   /** @TODO */
+}
+
+/**
+ * @brief Deserializes a boolean value.
+ * 
+ * @param data The data stream to deserialize.
+ * @throws std::invalid_argument if the data stream is empty.
+ * @throws std::runtime_error if the data stream's format does not match the 
+ * template specialization
+ * @return The deserialized boolean value (true/false).
+ */
+template<>
+bool Deserialize<bool>(ByteArray data) {
+   if (data.empty()) { throw std::invalid_argument("Empty ByteArray"); }
+
+   switch (data[0]) {
+      case Formats::BTRUE: {
+         return true;
+      }
+      case Formats::BFALSE: {
+         return false;
+      }
+      default: {
+         throw std::runtime_error("ByteArray does not match type bool");
+      }
+   }
+}
 
 }; // namespace pack
