@@ -67,7 +67,7 @@ class Packer {
    */
    Packer(std::ostream &stream) : mRef(stream) {
       mRef.seekp(std::ios::beg);
-      mStreamPos = mRef.tellp();
+      mStreamStart = mRef.tellp();
    }
 
    /**
@@ -86,6 +86,18 @@ class Packer {
    }
 
    ~Packer() { mRef.flush(); }
+
+   /**
+    * @brief Gets a count of the number of bytes that have been successfully serialized 
+    * so far.
+    * 
+    * Note that just because bytes have been serialized, does not mean they have 
+    * successfully been written. Serialized data is only guarunteed to be written out 
+    * on a call to the destructor.
+    * 
+    * @return size_t The number of bytes successfully serialized so far.
+    */
+   size_t ByteCount() { return (uint64_t)mRef.tellp() - mStreamStart; }
 
    /**
     * @brief Serialize some value to the byte stream.
@@ -111,12 +123,15 @@ class Packer {
    bool SerializeImpl(bool val) {
       char data = val ? Formats::BTRUE : Formats::BFALSE;
       mRef.put(data);
-      if (mRef.fail()) { return false; }
-      mStreamPos = mRef.tellp();
+      if (mRef.fail()) {
+         mRef.clear();
+         return false;
+      }
+      return true;
       return true;
    }
 
-   size_t mStreamPos {0};
+   size_t mStreamStart {0};
    std::ostream &mRef;
 };
 
@@ -131,7 +146,7 @@ class Unpacker {
    */
    Unpacker(std::istream &stream) : mRef(stream) {
       mRef.seekg(mRef.beg);
-      mStreamPos = mRef.tellg();
+      mStreamStart = mRef.tellg();
    }
 
    /**
@@ -143,8 +158,19 @@ class Unpacker {
    */
    Unpacker(std::istream &stream, size_t start) : mRef(stream) {
       mRef.seekg(start);
-      mStreamPos = mRef.tellg();
+      mStreamStart = mRef.tellg();
    }
+
+   /**
+    * @brief Gets a count of the number of bytes of serialized data that have been 
+    * successfully read in so far.
+    * 
+    * Note that the number of bytes deserialized is not the same as the number of bytes 
+    * actually returned by Deserialize.
+    * 
+    * @return size_t The number of bytes successfully deserialized so far.
+    */
+   size_t ByteCount() { return (uint64_t)mRef.tellg() - mStreamStart; }
 
    /**
     * @brief Deserializes a value from the byte stream.
@@ -201,7 +227,7 @@ class Unpacker {
       }
    }
 
-   size_t mStreamPos {0};
+   size_t mStreamStart {0};
    std::istream &mRef;
 };
 

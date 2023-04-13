@@ -9,12 +9,14 @@ TEST_CASE("Boolean") {
       pack::Packer packer(stream);
       REQUIRE(packer.Serialize(true) == true);
       REQUIRE(packer.Serialize(false) == true);
+      REQUIRE(packer.ByteCount() == 2);
    }
 
    {
       pack::Unpacker unpacker(stream);
       REQUIRE(unpacker.Deserialize<bool>() == true);
       REQUIRE(unpacker.Deserialize<bool>() == false);
+      REQUIRE(unpacker.ByteCount() == 2);
       REQUIRE_THROWS_AS(unpacker.Deserialize<bool>(), std::invalid_argument);
    }
 
