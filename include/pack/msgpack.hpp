@@ -14,9 +14,12 @@ static_assert(0xFF == (uint8_t)-1);
 using Byte = uint8_t;
 using ByteArray = std::vector<Byte>;
 
+constexpr uint8_t POS_FIXINT_MAX = 0b1111111;
+constexpr uint8_t POS_FIXINT_MASK = 0b10000000;
+
 // clang-format off
 enum Formats : Byte {
-   POS_FIXINT   = 0b00000000, // 0XXXXXXX   @TODO
+   POS_FIXINT   = 0b00000000, // 0XXXXXXX
    NEG_FIXINT   = 0b11100000, // 111xxxxx   @TODO
    FIXMAP       = 0b10000000, // 1000xxxx   @TODO
    FIXARR       = 0b10010000, // 1001xxxx   @TODO
@@ -33,7 +36,7 @@ enum Formats : Byte {
    EXT32        = 0b11001001, // 0xc9       @TODO
    FLOAT32      = 0b11001010, // 0xca       @TODO
    FLOAT64      = 0b11001011, // 0xcb       @TODO
-   UINT8        = 0b11001100, // 0xcc       @TODO
+   UINT8        = 0b11001100, // 0xcc
    UINT16       = 0b11001101, // 0xcd       @TODO
    UINT32       = 0b11001110, // 0xce       @TODO
    UINT64       = 0b11001111, // 0xcf       @TODO
@@ -82,7 +85,7 @@ class Packer {
    */
    Packer(std::ostream &stream, size_t start) : mRef(stream) {
       mRef.seekp(start);
-      mStreamPos = mRef.tellp();
+      mStreamStart = mRef.tellp();
    }
 
    ~Packer() { mRef.flush(); }
@@ -110,7 +113,12 @@ class Packer {
     */
    template<typename T>
    bool Serialize(T val) {
-      return SerializeImpl(val);
+      if constexpr (std::is_same_v<T, bool>) {
+         return SerializeBool(val);
+      } else if constexpr (std::is_unsigned_v<T>) {
+         return SerializeUnsignedInt(val);
+      } else if constexpr (std::is_signed_v<T>) {
+      }
    }
 
   private:
@@ -120,7 +128,7 @@ class Packer {
     * @param val The value to serialize
     * @returns true if serializing to the bytestream was successfull, false otherwise.
     */
-   bool SerializeImpl(bool val) {
+   bool SerializeBool(bool val) {
       char data = val ? Formats::BTRUE : Formats::BFALSE;
       mRef.put(data);
       if (mRef.fail()) {
@@ -128,6 +136,26 @@ class Packer {
          return false;
       }
       return true;
+   }
+
+   bool SerializeUnsignedInt(uint64_t val) {
+      if (val <= POS_FIXINT_MAX) {
+         mRef.put(val);
+      } else if (val <= UINT8_MAX) {
+         mRef.put(Formats::UINT8);
+         mRef.put(val);
+      } else if (val <= UINT16_MAX) {
+         /** @TODO */
+      } else if (val <= UINT32_MAX) {
+         /** @TODO */
+      } else {
+         /** @TODO */
+      }
+
+      if (mRef.fail()) {
+         mRef.clear();
+         return false;
+      };
       return true;
    }
 
@@ -183,21 +211,14 @@ class Unpacker {
     */
    template<typename T>
    T Deserialize() {
-      return DeserializeImpl<T>();
+      if constexpr (std::is_same_v<T, bool>) {
+         return DeserializeBool();
+      } else if constexpr (std::is_unsigned_v<T>) {
+         return DeserializeUnsignedInt<T>();
+      }
    }
 
   private:
-   /**
-    * @brief Deserializes a user-defined type.
-    * 
-    * @tparam T The type to deserialize. 
-    * @return T The deserialized type instance.
-    */
-   template<typename T>
-   T DeserializeImpl() {
-      /** @TODO */
-   }
-
    /**
     * @brief Deserializes a single boolean value.
     * 
@@ -205,8 +226,7 @@ class Unpacker {
     * @throws std::runtime_error if the bytestream data does not encode a boolean.
     * @returns The deserialized boolean value.
     */
-   template<>
-   bool DeserializeImpl<bool>() {
+   bool DeserializeBool() {
       if (mRef.rdbuf()->in_avail() == 0) {
          throw std::invalid_argument("No more data to read");
       }
@@ -223,6 +243,30 @@ class Unpacker {
          }
          default: {
             throw std::runtime_error("ByteArray does not match type bool");
+         }
+      }
+   }
+
+   template<typename Uint>
+   Uint DeserializeUnsignedInt() {
+      if (mRef.rdbuf()->in_avail() == 0) {
+         throw std::invalid_argument("No more data to read");
+      }
+
+      char fmtOrData = Formats::NIL;
+      mRef.get(fmtOrData);
+      switch ((Formats)fmtOrData) {
+         case Formats::UINT8: {
+            mRef.get(fmtOrData);
+            return (Uint)fmtOrData;
+         }
+         default: {
+            if ((fmtOrData & POS_FIXINT_MASK) == 0) {
+               // Positive fixint
+               return (Uint)fmtOrData;
+            } else {
+               throw std::runtime_error("ByteArray does not match type uint");
+            }
          }
       }
    }
