@@ -9,7 +9,7 @@ using Byte = uint8_t;
 using ByteArray = std::vector<Byte>;
 
 // clang-format off
-enum class Formats : Byte {
+enum Formats : Byte {
    POS_FIXINT   = 0b00000000, // 0XXXXXXX   @TODO
    NEG_FIXINT   = 0b11100000, // 111xxxxx   @TODO
    FIXMAP       = 0b10000000, // 1000xxxx   @TODO
@@ -17,8 +17,8 @@ enum class Formats : Byte {
    FIXSTR       = 0b10100000, // 101xxxxx   @TODO
 
    NIL          = 0b11000000, // 0xc0       @TODO
-   FALSE        = 0b11000010, // 0xc2       @TODO
-   TRUE         = 0b11000011, // 0xc3       @TODO
+   BFALSE       = 0b11000010, // 0xc2
+   BTRUE        = 0b11000011, // 0xc3
    BIN8         = 0b11000100, // 0xc4       @TODO
    BIN16        = 0b11000101, // 0xc5       @TODO
    BIN32        = 0b11000110, // 0xc6       @TODO
