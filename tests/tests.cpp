@@ -4,18 +4,29 @@
 #include <pack/msgpack.hpp>
 
 TEST_CASE("Boolean") {
-   pack::ByteArray data;
+   std::stringstream stream(std::ios::binary | std::ios::out | std::ios::in);
+   {
+      pack::Packer packer(stream);
+      REQUIRE(packer.Serialize(true) == true);
+      REQUIRE(packer.Serialize(false) == true);
+   }
 
-   data = pack::Serialize(true);
-   REQUIRE(pack::Deserialize<bool>(data) == true);
+   {
+      pack::Unpacker unpacker(stream);
+      REQUIRE(unpacker.Deserialize<bool>() == true);
+      REQUIRE(unpacker.Deserialize<bool>() == false);
+      REQUIRE_THROWS_AS(unpacker.Deserialize<bool>(), std::invalid_argument);
+   }
 
-   data = pack::Serialize(false);
-   REQUIRE(pack::Deserialize<bool>(data) == false);
+   stream.str("");
+   {
+      pack::Unpacker unpacker(stream);
+      REQUIRE_THROWS_AS(unpacker.Deserialize<bool>(), std::invalid_argument);
+   }
 
-   data.clear();
-   REQUIRE_THROWS_AS(pack::Deserialize<bool>(data), std::invalid_argument);
-
-   data.clear();
-   data.push_back(0xc0);
-   REQUIRE_THROWS_AS(pack::Deserialize<bool>(data), std::runtime_error);
+   stream.put(0xcc);
+   {
+      pack::Unpacker unpacker(stream);
+      REQUIRE_THROWS_AS(unpacker.Deserialize<bool>(), std::runtime_error);
+   }
 }

@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <vector>
 #include <stdexcept>
+#include <ostream>
+#include <istream>
 
 namespace pack {
 
@@ -54,60 +56,153 @@ enum Formats : Byte {
 };
 // clang-format on
 
-/*****************************************************************************************
- ************************************   Serializers   ************************************
- ****************************************************************************************/
+class Packer {
+  public:
+   /**
+   * @brief Construct a new Packer object, setting stream to the beginning of the 
+   * buffer.
+   * 
+   * @param stream The byte stream to pack serialized data out to. Must have the 
+   * std::ios::binary and std::ios::out mode flags set.
+   */
+   Packer(std::ostream &stream) : mRef(stream) {
+      mRef.seekp(std::ios::beg);
+      mStreamPos = mRef.tellp();
+   }
 
-/**
- * @brief Serializes a boolean value of true or false.
- * 
- * @param val The value to serialize
- * @return ByteArray An array containing the serialized byte(s).
- */
-inline ByteArray Serialize(bool val) {
-   return (val) ? ByteArray {Formats::BTRUE} : ByteArray {Formats::BFALSE};
-}
+   /**
+   * @brief Construct a new Packer object, setting the stream to a specified start 
+   * position.
+   * 
+   * Useful if you want to serialize data out to a specified position in a file.
+   * 
+   * @param stream The byte stream to pack serialized data out to. Must have the 
+   * std::ios::binary and std::ios::out mode flags set.
+   * @param start The start offset, in bytes, from the beginning of the stream.
+   */
+   Packer(std::ostream &stream, size_t start) : mRef(stream) {
+      mRef.seekp(start);
+      mStreamPos = mRef.tellp();
+   }
 
-/*****************************************************************************************
- ***********************************   Deserializers   ***********************************
- ****************************************************************************************/
+   ~Packer() { mRef.flush(); }
 
-/**
- * @brief Recursively deserializes any unrecognized, user-defined type.
- * 
- * @tparam T The user-defined type to deserialize.
- * @param data The data stream to deserialize.
- * @return T A deserialized instance of the T data type.
- */
-template<typename T>
-T Deserialize(ByteArray data) {
-   /** @TODO */
-}
+   /**
+    * @brief Serialize some value to the byte stream.
+    * 
+    * @tparam T The type to serialize
+    * @param val The data to serialize.
+    * @returns true if the data was successfully serialized, false if an error occured. 
+    * Errors can occur either during the serialization process, or while writing to the 
+    * stream.
+    */
+   template<typename T>
+   bool Serialize(T val) {
+      return SerializeImpl(val);
+   }
 
-/**
- * @brief Deserializes a boolean value.
- * 
- * @param data The data stream to deserialize.
- * @throws std::invalid_argument if the data stream is empty.
- * @throws std::runtime_error if the data stream's format does not match the 
- * template specialization
- * @return The deserialized boolean value (true/false).
- */
-template<>
-bool Deserialize<bool>(ByteArray data) {
-   if (data.empty()) { throw std::invalid_argument("Empty ByteArray"); }
+  private:
+   /**
+    * @brief Serialize a single boolean value to the bytestream.
+    * 
+    * @param val The value to serialize
+    * @returns true if serializing to the bytestream was successfull, false otherwise.
+    */
+   bool SerializeImpl(bool val) {
+      char data = val ? Formats::BTRUE : Formats::BFALSE;
+      mRef.put(data);
+      if (mRef.fail()) { return false; }
+      mStreamPos = mRef.tellp();
+      return true;
+   }
 
-   switch (data[0]) {
-      case Formats::BTRUE: {
-         return true;
+   size_t mStreamPos {0};
+   std::ostream &mRef;
+};
+
+class Unpacker {
+  public:
+   /**
+   * @brief Construct a new Unpacker object, setting stream to the beginning of the
+   * buffer.
+   * 
+   * @param stream The byte stream to unpack serialized data from. Must have the 
+   * std::ios::binary and std::ios::in mode flags set.
+   */
+   Unpacker(std::istream &stream) : mRef(stream) {
+      mRef.seekg(mRef.beg);
+      mStreamPos = mRef.tellg();
+   }
+
+   /**
+   * @brief Construct a new Unpacker object, setting the stream to a specified start 
+   * position.
+   * 
+   * @param stream The byte stream to unpack serialized data from. Must have the 
+   * std::ios::binary and std::ios::in mode flags set.
+   */
+   Unpacker(std::istream &stream, size_t start) : mRef(stream) {
+      mRef.seekg(start);
+      mStreamPos = mRef.tellg();
+   }
+
+   /**
+    * @brief Deserializes a value from the byte stream.
+    * 
+    * @tparam T The type to deserialize.
+    * @throws std::invalid_argument if there is no additional bytestream data.
+    * @throws std::runtime_error if the bytestream format does not match the requested 
+    * type T.
+    * @return T The deserialized type instance.
+    */
+   template<typename T>
+   T Deserialize() {
+      return DeserializeImpl<T>();
+   }
+
+  private:
+   /**
+    * @brief Deserializes a user-defined type.
+    * 
+    * @tparam T The type to deserialize. 
+    * @return T The deserialized type instance.
+    */
+   template<typename T>
+   T DeserializeImpl() {
+      /** @TODO */
+   }
+
+   /**
+    * @brief Deserializes a single boolean value.
+    * 
+    * @throws std::invalid_argument if there is no additional bytestream data.
+    * @throws std::runtime_error if the bytestream data does not encode a boolean.
+    * @returns The deserialized boolean value.
+    */
+   template<>
+   bool DeserializeImpl<bool>() {
+      if (mRef.rdbuf()->in_avail() == 0) {
+         throw std::invalid_argument("No more data to read");
       }
-      case Formats::BFALSE: {
-         return false;
-      }
-      default: {
-         throw std::runtime_error("ByteArray does not match type bool");
+
+      char data = Formats::NIL;
+      mRef.get(data);
+
+      switch ((Formats)data) {
+         case Formats::BTRUE: {
+            return true;
+         }
+         case Formats::BFALSE: {
+            return false;
+         }
+         default: {
+            throw std::runtime_error("ByteArray does not match type bool");
+         }
       }
    }
-}
+
+   size_t mStreamPos {0};
+   std::istream &mRef;
+};
 
 }; // namespace pack
