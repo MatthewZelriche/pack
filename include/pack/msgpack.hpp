@@ -6,6 +6,9 @@
 
 namespace pack {
 
+// Just in case, only two's complement is supported...
+static_assert(0xFF == (uint8_t)-1);
+
 using Byte = uint8_t;
 using ByteArray = std::vector<Byte>;
 
