@@ -60,8 +60,8 @@ TEST_CASE("Unsigned Integer") {
    {
       pack::Unpacker unpacker(stream);
       REQUIRE(unpacker.Deserialize<uint8_t>() == 0);
-      REQUIRE(unpacker.Deserialize<uint32_t>() == 35);
-      REQUIRE(unpacker.Deserialize<uint16_t>() == 127);
+      REQUIRE(unpacker.Deserialize<uint8_t>() == 35);
+      REQUIRE(unpacker.Deserialize<uint8_t>() == 127);
       REQUIRE(unpacker.ByteCount() == 3);
 
       REQUIRE(unpacker.Deserialize<uint8_t>() == 128);

@@ -106,6 +106,15 @@ enum Formats : Byte {
 // clang-format on
 
 /*****************************************************************************************
+ *************************************   Concepts   **************************************
+ ****************************************************************************************/
+template<class T, class U>
+concept IsType = std::same_as<T, U>;
+
+template<class T>
+concept UnsignedInt = std::is_integral_v<T> && !(std::same_as<T, bool>);
+
+/*****************************************************************************************
  **************************************   Classes   **************************************
  ****************************************************************************************/
 class Packer {
@@ -152,32 +161,14 @@ class Packer {
    size_t ByteCount() { return (uint64_t)mRef.tellp() - mStreamStart; }
 
    /**
-    * @brief Serialize some value to the byte stream.
-    * 
-    * @tparam T The type to serialize
-    * @param val The data to serialize.
-    * @returns true if the data was successfully serialized, false if an error occured. 
-    * Errors can occur either during the serialization process, or while writing to the 
-    * stream.
-    */
-   template<typename T>
-   bool Serialize(T val) {
-      if constexpr (std::is_same_v<T, bool>) {
-         return SerializeBool(val);
-      } else if constexpr (std::is_unsigned_v<T>) {
-         return SerializeUnsignedInt(val);
-      } else if constexpr (std::is_signed_v<T>) {
-      }
-   }
-
-  private:
-   /**
     * @brief Serialize a single boolean value to the bytestream.
     * 
     * @param val The value to serialize
-    * @returns true if serializing to the bytestream was successfull, false otherwise.
+    * @returns true if serializing to the bytestream was successful, false otherwise.
     */
-   bool SerializeBool(bool val) {
+   template<typename T>
+   requires IsType<T, bool> bool
+   Serialize(T val) {
       char data = val ? Formats::BTRUE : Formats::BFALSE;
       mRef.put(data);
       if (mRef.fail()) {
@@ -187,7 +178,19 @@ class Packer {
       return true;
    }
 
-   bool SerializeUnsignedInt(uint64_t val) {
+   /**
+    * @brief Serialize a single unsigned integer to the bytestream
+    * 
+    * Can serialize 8, 16, 32, 64 bit unsigned integers into 1, 2, 3, 5, or 9 bytes of 
+    * serialized data.
+    * 
+    * @tparam T The unsigned integer width type to serialize
+    * @param val The value to serialize
+    * @return true if serializing to the bytestream was successful, false otherwise.
+    */
+   template<typename T>
+   requires UnsignedInt<T> bool
+   Serialize(T val) {
       if (val <= POS_FIXINT_MAX) {
          mRef.put(val);
       } else if (val <= UINT8_MAX) {
@@ -208,6 +211,7 @@ class Packer {
       return true;
    }
 
+  private:
    size_t mStreamStart {0};
    std::ostream &mRef;
 };
@@ -250,32 +254,15 @@ class Unpacker {
    size_t ByteCount() { return (uint64_t)mRef.tellg() - mStreamStart; }
 
    /**
-    * @brief Deserializes a value from the byte stream.
-    * 
-    * @tparam T The type to deserialize.
-    * @throws std::invalid_argument if there is no additional bytestream data.
-    * @throws std::runtime_error if the bytestream format does not match the requested 
-    * type T.
-    * @return T The deserialized type instance.
-    */
-   template<typename T>
-   T Deserialize() {
-      if constexpr (std::is_same_v<T, bool>) {
-         return DeserializeBool();
-      } else if constexpr (std::is_unsigned_v<T>) {
-         return DeserializeUnsignedInt<T>();
-      }
-   }
-
-  private:
-   /**
     * @brief Deserializes a single boolean value.
     * 
     * @throws std::invalid_argument if there is no additional bytestream data.
     * @throws std::runtime_error if the bytestream data does not encode a boolean.
     * @returns The deserialized boolean value.
     */
-   bool DeserializeBool() {
+   template<typename T>
+   requires IsType<T, bool> bool
+   Deserialize() {
       if (mRef.rdbuf()->in_avail() == 0) {
          throw std::invalid_argument("No more data to read");
       }
@@ -296,8 +283,14 @@ class Unpacker {
       }
    }
 
-   template<typename Uint>
-   Uint DeserializeUnsignedInt() {
+   /**
+    * @brief Deserializes a single 8 bit unsigned integer value.
+    * 
+    * @return The deserialized value.
+    */
+   template<typename T>
+   requires IsType<T, uint8_t>
+   T Deserialize() {
       if (mRef.rdbuf()->in_avail() == 0) {
          throw std::invalid_argument("No more data to read");
       }
@@ -307,12 +300,12 @@ class Unpacker {
       switch ((Formats)fmtOrData) {
          case Formats::UINT8: {
             mRef.get(fmtOrData);
-            return (Uint)fmtOrData;
+            return (T)fmtOrData;
          }
          default: {
             if ((fmtOrData & POS_FIXINT_MASK) == 0) {
                // Positive fixint
-               return (Uint)fmtOrData;
+               return (T)fmtOrData;
             } else {
                throw std::runtime_error("ByteArray does not match type uint");
             }
@@ -320,6 +313,7 @@ class Unpacker {
       }
    }
 
+  private:
    size_t mStreamStart {0};
    std::istream &mRef;
 };

@@ -1,5 +1,6 @@
 ---
 BasedOnStyle: Google
+IndentRequiresClause: 'false'
 AlignAfterOpenBracket: Align
 AlignConsecutiveMacros: 'true'
 AlignConsecutiveAssignments: 'false'
