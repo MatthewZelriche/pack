@@ -35,6 +35,8 @@ static_assert(std::endian::native == std::endian::little ||
       }                                                        \
    }
 
+namespace pack {
+
 #ifdef _MSC_VER
 #include <stdlib.h>
 PACK_BIG_ENDIAN_FN(uint16_t, _byteswap_ushort)
@@ -52,8 +54,6 @@ PACK_LITTLE_ENDIAN_FN(uint16_t, bswap_16)
 PACK_LITTLE_ENDIAN_FN(uint32_t, bswap_32)
 PACK_LITTLE_ENDIAN_FN(uint64_t, bswap_64)
 #endif
-
-namespace pack {
 
 /*****************************************************************************************
  ***********************************   Msgpack Defs   ************************************
