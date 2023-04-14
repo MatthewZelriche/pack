@@ -26,13 +26,13 @@ static_assert(std::endian::native == std::endian::little ||
       }                                                           \
    }
 
-#define PACK_LITTLE_ENDIAN_FN(type, fnName)                    \
-   inline type ToLittleEndian(type in) {                       \
-      if constexpr (std::endian::native == std::endian::big) { \
-         return fnName(in);                                    \
-      } else {                                                 \
-         return in;                                            \
-      }                                                        \
+#define PACK_LITTLE_ENDIAN_FN(type, fnName)                       \
+   inline type ToLittleEndian(type in) {                          \
+      if constexpr (std::endian::native == std::endian::little) { \
+         return fnName(in);                                       \
+      } else {                                                    \
+         return in;                                               \
+      }                                                           \
    }
 
 namespace pack {
