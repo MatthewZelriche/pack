@@ -1,5 +1,6 @@
 #pragma once
 
+#include <numeric>
 #include <cstdint>
 #include <vector>
 #include <stdexcept>
@@ -83,9 +84,9 @@ enum Formats : Byte {
    FLOAT32      = 0b11001010, // 0xca       @TODO
    FLOAT64      = 0b11001011, // 0xcb       @TODO
    UINT8        = 0b11001100, // 0xcc
-   UINT16       = 0b11001101, // 0xcd       @TODO
-   UINT32       = 0b11001110, // 0xce       @TODO
-   UINT64       = 0b11001111, // 0xcf       @TODO
+   UINT16       = 0b11001101, // 0xcd
+   UINT32       = 0b11001110, // 0xce
+   UINT64       = 0b11001111, // 0xcf
    INT8         = 0b11010000, // 0xd0       @TODO
    INT16        = 0b11001101, // 0xd1       @TODO
    INT32        = 0b11001110, // 0xd2       @TODO
@@ -210,11 +211,17 @@ class Packer {
          mRef.put(Formats::UINT8);
          mRef.put(val);
       } else if (val <= UINT16_MAX) {
-         /** @TODO */
+         mRef.put(Formats::UINT16);
+         uint16_t convert = ToBigEndian((uint16_t)val);
+         mRef.write((char *)&convert, 2);
       } else if (val <= UINT32_MAX) {
-         /** @TODO */
+         mRef.put(Formats::UINT32);
+         uint32_t convert = ToBigEndian((uint32_t)val);
+         mRef.write((char *)&convert, 4);
       } else {
-         /** @TODO */
+         mRef.put(Formats::UINT64);
+         uint64_t convert = ToBigEndian((uint64_t)val);
+         mRef.write((char *)&convert, 8);
       }
 
       if (mRef.fail()) {
@@ -246,6 +253,8 @@ class Unpacker {
    * @brief Construct a new Unpacker object, setting the stream to a specified start 
    * position.
    * 
+   * Useful if you want to deserialize data not at the beginning of a file.
+   * 
    * @param stream The byte stream to unpack serialized data from. Must have the 
    * std::ios::binary and std::ios::in mode flags set.
    */
@@ -269,6 +278,10 @@ class Unpacker {
     * @brief Deserializes a variable number of values.
     * 
     * @throws std::invalid_argument if there are no more bytes to read in the stream.
+    * @throws std::runtime_error If a given type does not match its corresponding format 
+    * specifier.
+    * @throws std::length_error If deserializing the data into T would result in a 
+    * narrowing conversion. (eg, Deserialized data is UINT64 but T is uint32_t)
     * @tparam T The first type to deserialize
     * @tparam Rest A parameter pack containing the rest of the types to deserialize.
     * @param next The next value to be filled with the deserialized data.
@@ -276,10 +289,6 @@ class Unpacker {
     */
    template<typename T, typename... Rest>
    void Deserialize(T &next, Rest &...rest) {
-      if (mRef.rdbuf()->in_avail() == 0) {
-         throw std::invalid_argument("No more data to read");
-      }
-
       Deserialize(next);
       Deserialize(rest...);
    }
@@ -287,6 +296,8 @@ class Unpacker {
    /**
     * @brief Deserializes a single boolean value.
     * 
+    * @param out The value to be filled with the deserialized data.
+    * @throws std::invalid_argument if the bytestream contains no more data.
     * @throws std::runtime_error if the bytestream data does not encode a boolean.
     * @returns The deserialized boolean value.
     */
@@ -316,35 +327,84 @@ class Unpacker {
    }
 
    /**
-    * @brief Deserializes a single 8 bit unsigned integer value.
+    * @brief Deserializes a single unsigned integer value of width 8, 16, 32, 64 bits.
     * 
-    * @return The deserialized value.
+    * @tparam T The type of the out parameter. T must be able to accomodate the 
+    * deserialized value without narrowing conversions, else std::length_error is 
+    * generated.
+    * @param out The value to be filled with the deserialized data.
+    * @throws std::invalid_argument if the bytestream contains no more data.
+    * @throws std::runtime_error if the bytestream data does not encode an unsigned int.
+    * @throws std::length_error If deserializing the data into T would result in a 
+    * narrowing conversion.
     */
    template<typename T>
-   requires IsType<T, uint8_t>
+   requires UnsignedInt<T>
    void Deserialize(T &out) {
       if (mRef.rdbuf()->in_avail() == 0) {
          throw std::invalid_argument("No more data to read");
       }
+      // clear out param because it may have a larger width with extra data.
+      out = 0;
 
       char fmtOrData = Formats::NIL;
-      mRef.get(fmtOrData);
+      fmtOrData = mRef.peek(); // Nondestructive peek so we can forward
+
       switch ((Formats)fmtOrData) {
-         case Formats::UINT8: {
-            mRef.get(fmtOrData);
-            out = (T)fmtOrData;
+         case UINT8: {
+            mRef.get(fmtOrData); // Pop the format specifier
+            char data = 0;
+            mRef.get(data);
+            out = (uint8_t)data;
+            break;
+         }
+         case UINT16: {
+            ReadMultiByteUint<uint16_t>(out);
+            break;
+         }
+         case UINT32: {
+            ReadMultiByteUint<uint32_t>(out);
+            break;
+         }
+         case UINT64: {
+            ReadMultiByteUint<uint64_t>(out);
             break;
          }
          default: {
             if ((fmtOrData & POS_FIXINT_MASK) == 0) {
                // Positive fixint
-               out = (T)fmtOrData;
+               mRef.get(fmtOrData); // Pop out the stored val
+               out = (uint8_t)fmtOrData;
                break;
             } else {
                throw std::runtime_error("ByteArray does not match type uint");
             }
          }
       }
+   }
+
+   /**
+    * @brief Reads in a multibyte unsigned integer from the byte stream.
+    * 
+    * Type U must have a width capable of holding any possible value of type T.
+    * 
+    * @tparam T The C++ unsigned integral type matching the msgpack format specifier
+    * @tparam U The unsigned integral type of the provided output parameter.
+    * @param out The value to be filled with the read data.
+    * @throws std::length_error if the width of type U is too small to accomodate any
+    * value of type T. (ie, a narrowing conversion would occur)
+    */
+   template<typename T, typename U>
+   void ReadMultiByteUint(U &out) {
+      if (std::numeric_limits<U>::max() < std::numeric_limits<T>::max()) {
+         throw std::length_error("Narrowing conversion");
+      }
+
+      char fmt;
+      mRef.get(fmt); // Pop the format specifier
+      T val = 0;
+      mRef.read((char *)&val, sizeof(T));
+      out = ToLittleEndian(val);
    }
 
   private:
