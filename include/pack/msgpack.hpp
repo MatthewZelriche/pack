@@ -6,10 +6,12 @@
 #include <ostream>
 #include <istream>
 
-namespace pack {
-
-// Just in case, only two's complement is supported...
+// Requires cpp20
+// Requires big or little endian architecture
+// Requires twos-complement architecture
 static_assert(0xFF == (uint8_t)-1);
+static_assert(std::endian::native == std::endian::little ||
+              std::endian::native == std::endian::big);
 
 using Byte = uint8_t;
 using ByteArray = std::vector<Byte>;
