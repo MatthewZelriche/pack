@@ -161,21 +161,34 @@ class Packer {
    size_t ByteCount() { return (uint64_t)mRef.tellp() - mStreamStart; }
 
    /**
+    * @brief Serializes any number of values to the bytestream.
+    * 
+    * @tparam T The type of the first value to serialize.
+    * @tparam Rest The rest of the types to serialize.
+    * @param next The next value to serialize.
+    * @param rest A parameter pack consisting of the rest of the values.
+    */
+   template<typename T, typename... Rest>
+   void Serialize(T next, Rest... rest) {
+      Serialize(next);
+      Serialize(rest...);
+   }
+
+   /**
     * @brief Serialize a single boolean value to the bytestream.
     * 
     * @param val The value to serialize
-    * @returns true if serializing to the bytestream was successful, false otherwise.
+    * @throws std::runtime_error if there was a failure writing to the stream.
     */
    template<typename T>
-   requires IsType<T, bool> bool
-   Serialize(T val) {
+   requires IsType<T, bool>
+   void Serialize(T val) {
       char data = val ? Formats::BTRUE : Formats::BFALSE;
       mRef.put(data);
       if (mRef.fail()) {
          mRef.clear();
-         return false;
+         throw std::runtime_error("stream write error");
       }
-      return true;
    }
 
    /**
@@ -186,11 +199,11 @@ class Packer {
     * 
     * @tparam T The unsigned integer width type to serialize
     * @param val The value to serialize
-    * @return true if serializing to the bytestream was successful, false otherwise.
+    * @throws std::runtime_error if there was a failure writing to the stream.
     */
    template<typename T>
-   requires UnsignedInt<T> bool
-   Serialize(T val) {
+   requires UnsignedInt<T>
+   void Serialize(T val) {
       if (val <= POS_FIXINT_MAX) {
          mRef.put(val);
       } else if (val <= UINT8_MAX) {
@@ -206,9 +219,8 @@ class Packer {
 
       if (mRef.fail()) {
          mRef.clear();
-         return false;
+         throw std::runtime_error("stream write error");
       };
-      return true;
    }
 
   private:
@@ -254,15 +266,33 @@ class Unpacker {
    size_t ByteCount() { return (uint64_t)mRef.tellg() - mStreamStart; }
 
    /**
+    * @brief Deserializes a variable number of values.
+    * 
+    * @throws std::invalid_argument if there are no more bytes to read in the stream.
+    * @tparam T The first type to deserialize
+    * @tparam Rest A parameter pack containing the rest of the types to deserialize.
+    * @param next The next value to be filled with the deserialized data.
+    * @param rest The rest of the values to be filled with deserialized data.
+    */
+   template<typename T, typename... Rest>
+   void Deserialize(T &next, Rest &...rest) {
+      if (mRef.rdbuf()->in_avail() == 0) {
+         throw std::invalid_argument("No more data to read");
+      }
+
+      Deserialize(next);
+      Deserialize(rest...);
+   }
+
+   /**
     * @brief Deserializes a single boolean value.
     * 
-    * @throws std::invalid_argument if there is no additional bytestream data.
     * @throws std::runtime_error if the bytestream data does not encode a boolean.
     * @returns The deserialized boolean value.
     */
    template<typename T>
-   requires IsType<T, bool> bool
-   Deserialize() {
+   requires IsType<T, bool>
+   void Deserialize(T &out) {
       if (mRef.rdbuf()->in_avail() == 0) {
          throw std::invalid_argument("No more data to read");
       }
@@ -272,10 +302,12 @@ class Unpacker {
 
       switch ((Formats)data) {
          case Formats::BTRUE: {
-            return true;
+            out = true;
+            break;
          }
          case Formats::BFALSE: {
-            return false;
+            out = false;
+            break;
          }
          default: {
             throw std::runtime_error("ByteArray does not match type bool");
@@ -290,7 +322,7 @@ class Unpacker {
     */
    template<typename T>
    requires IsType<T, uint8_t>
-   T Deserialize() {
+   void Deserialize(T &out) {
       if (mRef.rdbuf()->in_avail() == 0) {
          throw std::invalid_argument("No more data to read");
       }
@@ -300,12 +332,14 @@ class Unpacker {
       switch ((Formats)fmtOrData) {
          case Formats::UINT8: {
             mRef.get(fmtOrData);
-            return (T)fmtOrData;
+            out = (T)fmtOrData;
+            break;
          }
          default: {
             if ((fmtOrData & POS_FIXINT_MASK) == 0) {
                // Positive fixint
-               return (T)fmtOrData;
+               out = (T)fmtOrData;
+               break;
             } else {
                throw std::runtime_error("ByteArray does not match type uint");
             }

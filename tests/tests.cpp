@@ -7,29 +7,34 @@ TEST_CASE("Boolean") {
    std::stringstream stream(std::ios::binary | std::ios::out | std::ios::in);
    {
       pack::Packer packer(stream);
-      REQUIRE(packer.Serialize(true) == true);
-      REQUIRE(packer.Serialize(false) == true);
+      packer.Serialize(true, false);
       REQUIRE(packer.ByteCount() == 2);
    }
 
    {
       pack::Unpacker unpacker(stream);
-      REQUIRE(unpacker.Deserialize<bool>() == true);
-      REQUIRE(unpacker.Deserialize<bool>() == false);
+      bool first;
+      bool second;
+      unpacker.Deserialize(first, second);
+      REQUIRE(first == true);
+      REQUIRE(second == false);
       REQUIRE(unpacker.ByteCount() == 2);
-      REQUIRE_THROWS_AS(unpacker.Deserialize<bool>(), std::invalid_argument);
+      bool invalid;
+      REQUIRE_THROWS_AS(unpacker.Deserialize(invalid), std::invalid_argument);
    }
 
    stream.str("");
    {
       pack::Unpacker unpacker(stream);
-      REQUIRE_THROWS_AS(unpacker.Deserialize<bool>(), std::invalid_argument);
+      bool invalid;
+      REQUIRE_THROWS_AS(unpacker.Deserialize(invalid), std::invalid_argument);
    }
 
    stream.put(0xcc);
    {
       pack::Unpacker unpacker(stream);
-      REQUIRE_THROWS_AS(unpacker.Deserialize<bool>(), std::runtime_error);
+      bool invalid;
+      REQUIRE_THROWS_AS(unpacker.Deserialize(invalid), std::runtime_error);
    }
 }
 
@@ -42,31 +47,32 @@ TEST_CASE("Unsigned Integer") {
       uint8_t fixint1 = 0;
       uint16_t fixint2 = 35;
       uint32_t fixint3 = 127;
-      REQUIRE(packer.Serialize(fixint1) == true);
-      REQUIRE(packer.Serialize(fixint2) == true);
-      REQUIRE(packer.Serialize(fixint3) == true);
+      packer.Serialize(fixint1, fixint2, fixint3);
       REQUIRE(packer.ByteCount() == 3);
 
       // Test uint8 (2 bytes)
       uint16_t val1 = 128;
       uint32_t val2 = 180;
       uint64_t val3 = 255;
-      REQUIRE(packer.Serialize(val1) == true);
-      REQUIRE(packer.Serialize(val2) == true);
-      REQUIRE(packer.Serialize(val3) == true);
+      packer.Serialize(val1, val2, val3);
       REQUIRE(packer.ByteCount() == 9);
    }
 
    {
       pack::Unpacker unpacker(stream);
-      REQUIRE(unpacker.Deserialize<uint8_t>() == 0);
-      REQUIRE(unpacker.Deserialize<uint8_t>() == 35);
-      REQUIRE(unpacker.Deserialize<uint8_t>() == 127);
+      uint8_t val1;
+      uint8_t val2;
+      uint8_t val3;
+      unpacker.Deserialize(val1, val2, val3);
+      REQUIRE(val1 == 0);
+      REQUIRE(val2 == 35);
+      REQUIRE(val3 == 127);
       REQUIRE(unpacker.ByteCount() == 3);
 
-      REQUIRE(unpacker.Deserialize<uint8_t>() == 128);
-      REQUIRE(unpacker.Deserialize<uint8_t>() == 180);
-      REQUIRE(unpacker.Deserialize<uint8_t>() == 255);
+      unpacker.Deserialize(val1, val2, val3);
+      REQUIRE(val1 == 128);
+      REQUIRE(val2 == 180);
+      REQUIRE(val3 == 255);
       REQUIRE(unpacker.ByteCount() == 9);
    }
 }
