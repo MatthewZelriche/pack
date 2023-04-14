@@ -53,10 +53,17 @@ PACK_LITTLE_ENDIAN_FN(uint32_t, bswap_32)
 PACK_LITTLE_ENDIAN_FN(uint64_t, bswap_64)
 #endif
 
-constexpr uint8_t POS_FIXINT_MAX = 0b1111111;
-constexpr uint8_t POS_FIXINT_MASK = 0b10000000;
+namespace pack {
 
+/*****************************************************************************************
+ ***********************************   Msgpack Defs   ************************************
+ ****************************************************************************************/
 // clang-format off
+using Byte                          = uint8_t;
+using ByteArray                     = std::vector<Byte>;
+constexpr uint8_t POS_FIXINT_MAX    = 0b1111111;
+constexpr uint8_t POS_FIXINT_MASK   = 0b10000000;
+
 enum Formats : Byte {
    POS_FIXINT   = 0b00000000, // 0XXXXXXX
    NEG_FIXINT   = 0b11100000, // 111xxxxx   @TODO
@@ -98,6 +105,9 @@ enum Formats : Byte {
 };
 // clang-format on
 
+/*****************************************************************************************
+ **************************************   Classes   **************************************
+ ****************************************************************************************/
 class Packer {
   public:
    /**
