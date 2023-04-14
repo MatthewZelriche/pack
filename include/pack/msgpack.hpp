@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <ostream>
 #include <istream>
+#include <bit>
 
 // Requires cpp20
 // Requires big or little endian architecture
@@ -13,8 +14,44 @@ static_assert(0xFF == (uint8_t)-1);
 static_assert(std::endian::native == std::endian::little ||
               std::endian::native == std::endian::big);
 
-using Byte = uint8_t;
-using ByteArray = std::vector<Byte>;
+/*****************************************************************************************
+ ********************************   Endian Converters   **********************************
+ ****************************************************************************************/
+#define PACK_BIG_ENDIAN_FN(type, fnName)                          \
+   inline type ToBigEndian(type in) {                             \
+      if constexpr (std::endian::native == std::endian::little) { \
+         return fnName(in);                                       \
+      } else {                                                    \
+         return in;                                               \
+      }                                                           \
+   }
+
+#define PACK_LITTLE_ENDIAN_FN(type, fnName)                    \
+   inline type ToLittleEndian(type in) {                       \
+      if constexpr (std::endian::native == std::endian::big) { \
+         return fnName(in);                                    \
+      } else {                                                 \
+         return in;                                            \
+      }                                                        \
+   }
+
+#ifdef _MSC_VER
+#include <stdlib.h>
+PACK_BIG_ENDIAN_FN(uint16_t, _byteswap_ushort)
+PACK_BIG_ENDIAN_FN(uint32_t, _byteswap_ulong)
+PACK_BIG_ENDIAN_FN(uint64_t, _byteswap_uint64)
+PACK_LITTLE_ENDIAN_FN(uint16_t, _byteswap_ushort)
+PACK_LITTLE_ENDIAN_FN(uint32_t, _byteswap_ulong)
+PACK_LITTLE_ENDIAN_FN(uint64_t, _byteswap_uint64)
+#else
+#include <byteswap.h>
+PACK_BIG_ENDIAN_FN(uint16_t, bswap_16)
+PACK_BIG_ENDIAN_FN(uint32_t, bswap_32)
+PACK_BIG_ENDIAN_FN(uint64_t, bswap_64)
+PACK_LITTLE_ENDIAN_FN(uint16_t, bswap_16)
+PACK_LITTLE_ENDIAN_FN(uint32_t, bswap_32)
+PACK_LITTLE_ENDIAN_FN(uint64_t, bswap_64)
+#endif
 
 constexpr uint8_t POS_FIXINT_MAX = 0b1111111;
 constexpr uint8_t POS_FIXINT_MASK = 0b10000000;
