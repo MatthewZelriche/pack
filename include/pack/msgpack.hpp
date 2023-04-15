@@ -63,11 +63,12 @@ PACK_LITTLE_ENDIAN_FN(uint64_t, bswap_64)
 using Byte                          = uint8_t;
 using ByteArray                     = std::vector<Byte>;
 constexpr uint8_t POS_FIXINT_MAX    = 0b1111111;
+constexpr int8_t NEG_FIXINT_MIN     = 0b11100000;
 constexpr uint8_t POS_FIXINT_MASK   = 0b10000000;
 
 enum Formats : Byte {
    POS_FIXINT   = 0b00000000, // 0XXXXXXX
-   NEG_FIXINT   = 0b11100000, // 111xxxxx   @TODO
+   NEG_FIXINT   = 0b11100000, // 111xxxxx
    FIXMAP       = 0b10000000, // 1000xxxx   @TODO
    FIXARR       = 0b10010000, // 1001xxxx   @TODO
    FIXSTR       = 0b10100000, // 101xxxxx   @TODO
@@ -87,10 +88,10 @@ enum Formats : Byte {
    UINT16       = 0b11001101, // 0xcd
    UINT32       = 0b11001110, // 0xce
    UINT64       = 0b11001111, // 0xcf
-   INT8         = 0b11010000, // 0xd0       @TODO
-   INT16        = 0b11001101, // 0xd1       @TODO
-   INT32        = 0b11001110, // 0xd2       @TODO
-   INT64        = 0b11001111, // 0xd3       @TODO
+   INT8         = 0b11010000, // 0xd0
+   INT16        = 0b11010001, // 0xd1
+   INT32        = 0b11010010, // 0xd2
+   INT64        = 0b11010011, // 0xd3
    FIXEXT1      = 0b11010100, // 0xd4       @TODO
    FIXEXT2      = 0b11010101, // 0xd5       @TODO
    FIXEXT4      = 0b11010110, // 0xd6       @TODO
@@ -113,7 +114,10 @@ template<class T, class U>
 concept IsType = std::same_as<T, U>;
 
 template<class T>
-concept UnsignedInt = std::is_integral_v<T> && !(std::same_as<T, bool>);
+concept UnsignedInt = std::is_unsigned_v<T> && !(std::same_as<T, bool>);
+
+template<class T>
+concept SignedInt = std::is_signed_v<T> && !(std::same_as<T, bool>);
 
 /*****************************************************************************************
  **************************************   Classes   **************************************
@@ -221,6 +225,44 @@ class Packer {
       } else {
          mRef.put(Formats::UINT64);
          uint64_t convert = ToBigEndian((uint64_t)val);
+         mRef.write((char *)&convert, 8);
+      }
+
+      if (mRef.fail()) {
+         mRef.clear();
+         throw std::runtime_error("stream write error");
+      };
+   }
+
+   /**
+    * @brief Serialize a single signed integer to the bytestream.
+    * 
+    * Can serialize 8, 16, 32, 64 bit signed integers into 1, 2, 3, 5, or 9 bytes of 
+    * serialized data.
+    * 
+    * @tparam T The unsigned integer width type to serialize
+    * @param val The value to serialize
+    * @throws std::runtime_error if there was a failure writing to the stream.
+    */
+   template<typename T>
+   requires SignedInt<T>
+   void Serialize(T val) {
+      if (val < 0 && val >= NEG_FIXINT_MIN) {
+         mRef.put(val);
+      } else if (val <= INT8_MAX && val >= INT8_MIN) {
+         mRef.put(Formats::INT8);
+         mRef.put(val);
+      } else if (val <= INT16_MAX && val >= INT16_MIN) {
+         mRef.put(Formats::INT16);
+         int16_t convert = ToBigEndian((uint16_t)val);
+         mRef.write((char *)&convert, 2);
+      } else if (val <= INT32_MAX && val >= INT32_MIN) {
+         mRef.put(Formats::INT32);
+         int32_t convert = ToBigEndian((uint32_t)val);
+         mRef.write((char *)&convert, 4);
+      } else {
+         mRef.put(Formats::INT64);
+         int64_t convert = ToBigEndian((uint64_t)val);
          mRef.write((char *)&convert, 8);
       }
 
@@ -384,6 +426,62 @@ class Unpacker {
    }
 
    /**
+    * @brief Deserializes a single signed integer value of width 8, 16, 32, 64 bits.
+    * 
+    * @tparam T The type of the out parameter. T must be able to accomodate the 
+    * deserialized value without narrowing conversions, else std::length_error is 
+    * generated.
+    * @param out The value to be filled with the deserialized data.
+    * @throws std::invalid_argument if the bytestream contains no more data.
+    * @throws std::runtime_error if the bytestream data does not encode a signed int.
+    * @throws std::length_error If deserializing the data into T would result in a 
+    * narrowing conversion.
+    */
+   template<typename T>
+   requires SignedInt<T>
+   void Deserialize(T &out) {
+      if (mRef.rdbuf()->in_avail() == 0) {
+         throw std::invalid_argument("No more data to read");
+      }
+      // clear out param because it may have a larger width with extra data.
+      out = 0;
+
+      char fmtOrData = Formats::NIL;
+      fmtOrData = mRef.peek(); // Nondestructive peek so we can forward
+      switch ((Formats)fmtOrData) {
+         case INT8: {
+            mRef.get(fmtOrData); // Pop the format specifier
+            char data = 0;
+            mRef.get(data);
+            out = (int8_t)data;
+            break;
+         }
+         case INT16: {
+            ReadMultiByteInt<int16_t>(out);
+            break;
+         }
+         case INT32: {
+            ReadMultiByteInt<int32_t>(out);
+            break;
+         }
+         case INT64: {
+            ReadMultiByteInt<int64_t>(out);
+            break;
+         }
+         default: {
+            if ((fmtOrData & NEG_FIXINT_MIN) == NEG_FIXINT_MIN) {
+               // Negative fixint
+               mRef.get(fmtOrData); // Pop out the stored val
+               out = (int8_t)fmtOrData;
+               break;
+            } else {
+               throw std::runtime_error("ByteArray does not match type int");
+            }
+         }
+      }
+   }
+
+   /**
     * @brief Reads in a multibyte unsigned integer from the byte stream.
     * 
     * Type U must have a width capable of holding any possible value of type T.
@@ -405,6 +503,30 @@ class Unpacker {
       T val = 0;
       mRef.read((char *)&val, sizeof(T));
       out = ToLittleEndian(val);
+   }
+
+   /**
+    * @brief Reads in a multibyte signed integer from the byte stream.
+    * 
+    * @tparam T The C++ signed integral type matching the msgpack format specifier
+    * @tparam U The signed integral type of the provided output parameter.
+    * @param out The value to be filled with the read data.
+    * @throws std::length_error if the width of type U is too small to accomodate any
+    * value of type T. (ie, a narrowing conversion would occur)
+    */
+   template<typename T, typename U>
+   void ReadMultiByteInt(U &out) {
+      if (std::numeric_limits<U>::max() < std::numeric_limits<T>::max() ||
+          (std::numeric_limits<U>::min() > std::numeric_limits<T>::min())) {
+         throw std::length_error("Narrowing conversion");
+      }
+
+      char fmt;
+      mRef.get(fmt); // Pop the format specifier
+      T val = 0;
+      size_t bbbb = sizeof(T);
+      mRef.read((char *)&val, sizeof(T));
+      out = (T)ToLittleEndian((std::make_unsigned_t<T>)val);
    }
 
   private:

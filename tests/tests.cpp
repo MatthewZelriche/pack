@@ -124,7 +124,7 @@ TEST_CASE("Unsigned Integer") {
    stream.str("");
    {
       pack::Unpacker unpacker(stream);
-      bool invalid;
+      uint32_t invalid;
       REQUIRE_THROWS_AS(unpacker.Deserialize(invalid), std::invalid_argument);
    }
 
@@ -132,6 +132,104 @@ TEST_CASE("Unsigned Integer") {
    {
       pack::Unpacker unpacker(stream);
       uint32_t invalid;
+      REQUIRE_THROWS_AS(unpacker.Deserialize(invalid), std::runtime_error);
+   }
+}
+
+TEST_CASE("Signed Integer") {
+   std::stringstream stream(std::ios::binary | std::ios::out | std::ios::in);
+   {
+      pack::Packer packer(stream);
+
+      // Test fixints (1 byte)
+      int8_t fixint1 = -1;
+      int16_t fixint2 = -12;
+      int32_t fixint3 = -32;
+      packer.Serialize(fixint1, fixint2, fixint3);
+      REQUIRE(packer.ByteCount() == 3);
+
+      // Test int8 (2 bytes)
+      int16_t val1 = 100;
+      int32_t val2 = INT8_MIN;
+      int64_t val3 = INT8_MAX;
+      packer.Serialize(val1, val2, val3);
+      REQUIRE(packer.ByteCount() == 9);
+
+      // Test int16 (3 bytes)
+      int16_t val4 = -32001;
+      int32_t val5 = 29487;
+      packer.Serialize(val4, val5);
+      REQUIRE(packer.ByteCount() == 15);
+
+      // Test int32 (5 bytes)
+      int32_t val6 = INT32_MAX;
+      int64_t val7 = INT32_MIN;
+      packer.Serialize(val6, val7);
+      REQUIRE(packer.ByteCount() == 25);
+
+      // Test int64 (9 bytes)
+      int64_t val8 = INT64_MIN;
+      packer.Serialize(val8);
+      REQUIRE(packer.ByteCount() == 34);
+   }
+
+   {
+      pack::Unpacker unpacker(stream);
+      int8_t val1;
+      int8_t val2;
+      int16_t val3;
+      unpacker.Deserialize(val1, val2, val3);
+      REQUIRE(val1 == -1);
+      REQUIRE(val2 == -12);
+      REQUIRE(val3 == -32);
+      REQUIRE(unpacker.ByteCount() == 3);
+
+      unpacker.Deserialize(val1, val2, val3);
+      REQUIRE(val1 == 100);
+      REQUIRE(val2 == INT8_MIN);
+      REQUIRE(val3 == INT8_MAX);
+      REQUIRE(unpacker.ByteCount() == 9);
+
+      int8_t narrow16;
+      REQUIRE_THROWS_AS(unpacker.Deserialize(narrow16), std::length_error);
+      int16_t val4;
+      int16_t val5;
+      unpacker.Deserialize(val4, val5);
+      REQUIRE(val4 == -32001);
+      REQUIRE(val5 == 29487);
+      REQUIRE(unpacker.ByteCount() == 15);
+
+      int16_t narrow32;
+      REQUIRE_THROWS_AS(unpacker.Deserialize(narrow32), std::length_error);
+      int32_t val6;
+      int64_t val7;
+      unpacker.Deserialize(val6, val7);
+      REQUIRE(val6 == INT32_MAX);
+      REQUIRE(val7 == INT32_MIN);
+      REQUIRE(unpacker.ByteCount() == 25);
+
+      int32_t narrow64;
+      REQUIRE_THROWS_AS(unpacker.Deserialize(narrow64), std::length_error);
+      int64_t val8;
+      unpacker.Deserialize(val8);
+      REQUIRE(val8 == INT64_MIN);
+      REQUIRE(unpacker.ByteCount() == 34);
+
+      int64_t invalid;
+      REQUIRE_THROWS_AS(unpacker.Deserialize(invalid), std::invalid_argument);
+   }
+
+   stream.str("");
+   {
+      pack::Unpacker unpacker(stream);
+      int32_t invalid;
+      REQUIRE_THROWS_AS(unpacker.Deserialize(invalid), std::invalid_argument);
+   }
+
+   stream.put(0xca);
+   {
+      pack::Unpacker unpacker(stream);
+      int32_t invalid;
       REQUIRE_THROWS_AS(unpacker.Deserialize(invalid), std::runtime_error);
    }
 }
