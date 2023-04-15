@@ -346,7 +346,8 @@ class Unpacker {
    template<typename T>
    requires IsType<T, bool>
    void Deserialize(T &out) {
-      if (mRef.rdbuf()->in_avail() == 0) {
+      if (mRef.peek() == EOF) {
+         mRef.clear();
          throw std::invalid_argument("No more data to read");
       }
 
@@ -383,7 +384,8 @@ class Unpacker {
    template<typename T>
    requires UnsignedInt<T>
    void Deserialize(T &out) {
-      if (mRef.rdbuf()->in_avail() == 0) {
+      if (mRef.peek() == EOF) {
+         mRef.clear();
          throw std::invalid_argument("No more data to read");
       }
       // clear out param because it may have a larger width with extra data.
@@ -440,7 +442,8 @@ class Unpacker {
    template<typename T>
    requires SignedInt<T>
    void Deserialize(T &out) {
-      if (mRef.rdbuf()->in_avail() == 0) {
+      if (mRef.peek() == EOF) {
+         mRef.clear();
          throw std::invalid_argument("No more data to read");
       }
       // clear out param because it may have a larger width with extra data.
