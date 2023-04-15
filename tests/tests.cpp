@@ -233,3 +233,77 @@ TEST_CASE("Signed Integer") {
       REQUIRE_THROWS_AS(unpacker.Deserialize(invalid), std::runtime_error);
    }
 }
+
+std::string StringOfSize(size_t len) {
+   std::string str;
+
+   for (int i = 0; i < len; i++) { str.append(1, (char)('a' + (rand() % 26))); }
+   return str;
+}
+
+TEST_CASE("String") {
+   srand(time(NULL));
+   std::stringstream stream(std::ios::binary | std::ios::out | std::ios::in);
+   std::string three = StringOfSize(3);
+   std::string thirtyone = StringOfSize(31);
+   std::string fortytwo = StringOfSize(42);
+   std::string uint8max = StringOfSize(UINT8_MAX);
+   std::string str16 = StringOfSize(UINT8_MAX * 5);
+   std::string str16max = StringOfSize(UINT16_MAX);
+   std::string large = StringOfSize(100000);
+   {
+      pack::Packer packer(stream);
+      // Test fixstr
+      char arr[12] = {0};
+      memcpy(arr, three.data(), 3);
+      packer.Serialize(arr, thirtyone);
+      REQUIRE(packer.ByteCount() == 36);
+
+      // Test STR8
+      char arr2[43] = {0};
+      memcpy(arr2, fortytwo.data(), 42);
+      packer.Serialize(arr2, uint8max);
+      REQUIRE(packer.ByteCount() == 337);
+
+      // Test STR16
+      char arr3[UINT8_MAX * 5 + 1] = {0};
+      memcpy(arr3, str16.data(), UINT8_MAX * 5);
+      packer.Serialize(arr3, str16max);
+      REQUIRE(packer.ByteCount() == 67153);
+
+      // Test STR32
+      packer.Serialize(large);
+      REQUIRE(packer.ByteCount() == 167158);
+   }
+
+   {
+      pack::Unpacker unpacker(stream);
+      char tooShort[3] = {0};
+      REQUIRE_THROWS_AS(unpacker.Deserialize(tooShort), std::length_error);
+      char arr[12] = {0};
+      std::string string;
+      unpacker.Deserialize(arr, string);
+      REQUIRE(std::strcmp(arr, three.c_str()) == 0);
+      REQUIRE(std::strcmp(string.c_str(), thirtyone.c_str()) == 0);
+      REQUIRE(unpacker.ByteCount() == 36);
+
+      char arr2[43] = {0};
+      std::string string3;
+      unpacker.Deserialize(arr2, string3);
+      REQUIRE(std::strcmp(arr2, fortytwo.c_str()) == 0);
+      REQUIRE(std::strcmp(string3.c_str(), uint8max.c_str()) == 0);
+      REQUIRE(unpacker.ByteCount() == 337);
+
+      char arr3[UINT8_MAX * 5 + 1] = {0};
+      std::string string4;
+      unpacker.Deserialize(arr3, string4);
+      REQUIRE(std::strcmp(arr3, str16.c_str()) == 0);
+      REQUIRE(std::strcmp(string4.c_str(), str16max.c_str()) == 0);
+      REQUIRE(unpacker.ByteCount() == 67153);
+
+      std::string string5;
+      unpacker.Deserialize(string5);
+      REQUIRE(std::strcmp(string5.c_str(), large.c_str()) == 0);
+      REQUIRE(unpacker.ByteCount() == 167158);
+   }
+}

@@ -7,6 +7,7 @@
 #include <ostream>
 #include <istream>
 #include <bit>
+#include <string>
 
 // Requires cpp20
 // Requires big or little endian architecture
@@ -65,13 +66,15 @@ using ByteArray                     = std::vector<Byte>;
 constexpr uint8_t POS_FIXINT_MAX    = 0b1111111;
 constexpr int8_t NEG_FIXINT_MIN     = 0b11100000;
 constexpr uint8_t POS_FIXINT_MASK   = 0b10000000;
+constexpr uint8_t FIXSTR_MASK       = 0b10100000;
+constexpr uint8_t FIXSTR_MAX        = 0b11111;
 
 enum Formats : Byte {
    POS_FIXINT   = 0b00000000, // 0XXXXXXX
    NEG_FIXINT   = 0b11100000, // 111xxxxx
    FIXMAP       = 0b10000000, // 1000xxxx   @TODO
    FIXARR       = 0b10010000, // 1001xxxx   @TODO
-   FIXSTR       = 0b10100000, // 101xxxxx   @TODO
+   FIXSTR       = 0b10100000, // 101xxxxx
 
    NIL          = 0b11000000, // 0xc0       @TODO
    BFALSE       = 0b11000010, // 0xc2
@@ -97,9 +100,9 @@ enum Formats : Byte {
    FIXEXT4      = 0b11010110, // 0xd6       @TODO
    FIXEXT8      = 0b11010111, // 0xd7       @TODO
    FIXEXT16     = 0b11011000, // 0xd8       @TODO
-   STR8         = 0b11011001, // 0xd9       @TODO
-   STR16        = 0b11011010, // 0xda       @TODO
-   STR32        = 0b11011011, // 0xdb       @TODO
+   STR8         = 0b11011001, // 0xd9
+   STR16        = 0b11011010, // 0xda
+   STR32        = 0b11011011, // 0xdb
    ARR16        = 0b11011100, // 0xdc       @TODO
    ARR32        = 0b11011101, // 0xdd       @TODO
    MAP16        = 0b11011110, // 0xde       @TODO
@@ -118,6 +121,9 @@ concept UnsignedInt = std::is_unsigned_v<T> && !(std::same_as<T, bool>);
 
 template<class T>
 concept SignedInt = std::is_signed_v<T> && !(std::same_as<T, bool>);
+
+template<class T>
+concept StringType = std::convertible_to<T, std::string_view>;
 
 /*****************************************************************************************
  **************************************   Classes   **************************************
@@ -264,6 +270,38 @@ class Packer {
          mRef.put(Formats::INT64);
          int64_t convert = ToBigEndian((uint64_t)val);
          mRef.write((char *)&convert, 8);
+      }
+
+      if (mRef.fail()) {
+         mRef.clear();
+         throw std::runtime_error("stream write error");
+      };
+   }
+
+   template<typename T>
+   requires StringType<T>
+   void Serialize(T val) {
+      std::string_view view(val);
+      if (view.length() > UINT32_MAX) {
+         throw std::length_error("String exceeds max length");
+      } else if (view.length() <= FIXSTR_MAX) {
+         uint8_t fmt = FIXSTR_MASK | view.length();
+         mRef.put(fmt);
+         mRef.write(view.data(), view.length());
+      } else if (view.length() <= UINT8_MAX) {
+         mRef.put(Formats::STR8);
+         mRef.put(view.length());
+         mRef.write(view.data(), view.length());
+      } else if (view.length() <= UINT16_MAX) {
+         mRef.put(Formats::STR16);
+         uint16_t lenBigEndian = ToBigEndian((uint16_t)view.length());
+         mRef.write((char *)&lenBigEndian, 2);
+         mRef.write(view.data(), view.length());
+      } else {
+         mRef.put(Formats::STR32);
+         uint32_t lenBigEndian = ToBigEndian((uint32_t)view.length());
+         mRef.write((char *)&lenBigEndian, 4);
+         mRef.write(view.data(), view.length());
       }
 
       if (mRef.fail()) {
@@ -479,6 +517,138 @@ class Unpacker {
                break;
             } else {
                throw std::runtime_error("ByteArray does not match type int");
+            }
+         }
+      }
+   }
+
+   /**
+    * @brief Deserializes a UTF-8 string into a fixed-size C-style character array.
+    * 
+    * The fixed length array must contain enough space for each deserialized UTF-8
+    * character as well as a null-terminator which is automatically appended by this 
+    * function.
+    * 
+    * @tparam N The number of bytes that the fixed length character array can hold.
+    * @throws std::invalid_argument If there are no more bytes in the stream.
+    * @throws std::length_error if the array is too small to hold each deserialized 
+    * byte plus a null terminator.
+    * @throws std::runtime_error if the bytestream data does not encode a string.
+    */
+   template<size_t N>
+   void Deserialize(char (&str)[N]) {
+      if (mRef.peek() == EOF) {
+         mRef.clear();
+         throw std::invalid_argument("No more data to read");
+      }
+
+      char fmt = Formats::NIL;
+      mRef.get(fmt);
+      switch ((Formats)fmt) {
+         case STR8: {
+            uint8_t len = 0;
+            mRef.get((char &)len);
+            if (N < len + 1) {
+               mRef.unget();
+               throw std::length_error("Char array too small");
+            }
+            mRef.read(str, len);
+            str[len] = '\0';
+            break;
+         }
+         case STR16: {
+            uint16_t len = 0;
+            mRef.read((char *)&len, 2);
+            len = ToLittleEndian(len);
+            if (N < len + 1) {
+               mRef.unget();
+               throw std::length_error("Char array too small");
+            }
+            mRef.read(str, len);
+            str[len] = '\0';
+            break;
+         }
+         case STR32: {
+            uint32_t len = 0;
+            mRef.read((char *)&len, 4);
+            len = ToLittleEndian(len);
+            if (N < len + 1) {
+               mRef.unget();
+               throw std::length_error("Char array too small");
+            }
+            mRef.read(str, len);
+            str[len] = '\0';
+            break;
+         }
+         default: {
+            if ((fmt & FIXSTR_MASK) == FIXSTR_MASK) {
+               uint8_t len = fmt & FIXSTR_MAX;
+               if (N < len + 1) {
+                  mRef.unget();
+                  throw std::length_error("Char array too small");
+               }
+               mRef.read(str, len);
+               str[len] = '\0';
+               break;
+            } else {
+               throw std::runtime_error("ByteArray does not match type String");
+            }
+         }
+      }
+   }
+
+   /**
+    * @brief Deserializes a UTF-8 string.
+    * 
+    * @throws std::invalid_argument If there are no more bytes in the stream.
+    * @throws std::runtime_error if the bytestream data does not encode a string.
+    */
+   template<typename T>
+   requires IsType<T, std::string>
+   void Deserialize(T &out) {
+      if (mRef.peek() == EOF) {
+         mRef.clear();
+         throw std::invalid_argument("No more data to read");
+      }
+
+      char fmt = Formats::NIL;
+      fmt = mRef.get();
+      switch ((Formats)fmt) {
+         case STR8: {
+            mRef.get(fmt);
+            uint8_t len = (uint8_t)fmt;
+            out.resize((uint8_t)len);
+            mRef.read(out.data(), len);
+            out.append(1, '\0');
+            break;
+         }
+         case STR16: {
+            uint16_t len = 0;
+            mRef.read((char *)&len, 2);
+            len = ToLittleEndian(len);
+            out.resize(len);
+            mRef.read(out.data(), len);
+            out.append(1, '\0');
+            break;
+         }
+         case STR32: {
+            uint32_t len = 0;
+            mRef.read((char *)&len, 4);
+            len = ToLittleEndian(len);
+            out.resize(len);
+            mRef.read(out.data(), len);
+            out.append(1, '\0');
+            break;
+         }
+         default: {
+            if ((fmt & FIXSTR_MASK) == FIXSTR_MASK) {
+               uint8_t len = fmt & FIXSTR_MAX;
+               out.resize(len);
+               mRef.read(out.data(), len);
+               out.append(1, '\0');
+               break;
+            } else {
+               throw std::runtime_error("ByteArray does not match type String");
             }
          }
       }
