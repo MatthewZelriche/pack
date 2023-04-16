@@ -79,9 +79,6 @@ enum Formats : Byte {
    NIL          = 0b11000000, // 0xc0       @TODO
    BFALSE       = 0b11000010, // 0xc2
    BTRUE        = 0b11000011, // 0xc3
-   BIN8         = 0b11000100, // 0xc4       @TODO
-   BIN16        = 0b11000101, // 0xc5       @TODO
-   BIN32        = 0b11000110, // 0xc6       @TODO
    EXT8         = 0b11000111, // 0xc7       @TODO
    EXT16        = 0b11001000, // 0xc8       @TODO
    EXT32        = 0b11001001, // 0xc9       @TODO
