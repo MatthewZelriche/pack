@@ -12,9 +12,13 @@
 // Requires cpp20
 // Requires big or little endian architecture
 // Requires twos-complement architecture
+// Requires IEEE 754 floating point precision types
 static_assert(0xFF == (uint8_t)-1);
 static_assert(std::endian::native == std::endian::little ||
               std::endian::native == std::endian::big);
+static_assert(std::numeric_limits<double>::is_iec559);
+static_assert(sizeof(float) == 4);
+static_assert(sizeof(double) == 8);
 
 /*****************************************************************************************
  ********************************   Endian Converters   **********************************
@@ -117,7 +121,8 @@ template<class T>
 concept UnsignedInt = std::is_unsigned_v<T> && !(std::same_as<T, bool>);
 
 template<class T>
-concept SignedInt = std::is_signed_v<T> && !(std::same_as<T, bool>);
+concept SignedInt =
+    std::is_signed_v<T> && !(std::same_as<T, bool>) && !(std::floating_point<T>);
 
 template<class T>
 concept StringType = std::convertible_to<T, std::string_view>;
@@ -275,6 +280,13 @@ class Packer {
       };
    }
 
+   /**
+    * @brief Serialize a single UTF-8 null-terminated string.
+    * 
+    * @tparam T The string type to serialize (fixed length char array, std::string)
+    * @param val The data to serialize.
+    * @throws std::runtime_error if there was a failure writing to the stream.
+    */
    template<typename T>
    requires StringType<T>
    void Serialize(T val) {
@@ -300,6 +312,48 @@ class Packer {
          mRef.write((char *)&lenBigEndian, 4);
          mRef.write(view.data(), view.length());
       }
+
+      if (mRef.fail()) {
+         mRef.clear();
+         throw std::runtime_error("stream write error");
+      };
+   }
+
+   /**
+    * @brief Serialize a double precision IEEE 754 floating value.
+    * 
+    * @param val The data to serialize.
+    * @throws std::runtime_error if there was a failure writing to the stream.
+    */
+   template<typename T>
+   requires IsType<T, double>
+   void Serialize(T val) {
+      uint64_t data = 0;
+      memcpy(&data, &val, 8);
+      data = ToBigEndian(data);
+      mRef.put(Formats::FLOAT64);
+      mRef.write((char *)&data, 8);
+
+      if (mRef.fail()) {
+         mRef.clear();
+         throw std::runtime_error("stream write error");
+      };
+   }
+
+   /**
+    * @brief Serialize a single precision IEEE 754 floating value.
+    * 
+    * @param val The data to serialize.
+    * @throws std::runtime_error if there was a failure writing to the stream.
+    */
+   template<typename T>
+   requires IsType<T, float>
+   void Serialize(T val) {
+      uint32_t data = 0;
+      memcpy(&data, &val, 4);
+      data = ToBigEndian(data);
+      mRef.put(Formats::FLOAT32);
+      mRef.write((char *)&data, 4);
 
       if (mRef.fail()) {
          mRef.clear();
@@ -652,6 +706,55 @@ class Unpacker {
    }
 
    /**
+    * @brief Deserializes a IEEE 754 floating point value.
+    * 
+    * @tparam T The type (float, double) of the out parameter to deserialize into.
+    * @param out The location to place the deserialized data.
+    * @throws std::invalid_argument If there are no more bytes in the stream.
+    * @throws std::runtime_error if the bytestream data does not encode a string.
+    * @throws std::length_error If deserializing the data into T would result in 
+    * loss of precision.
+    */
+   template<typename T>
+   requires std::floating_point<T>
+   void Deserialize(T &out) {
+      if (mRef.peek() == EOF) {
+         mRef.clear();
+         throw std::invalid_argument("No more data to read");
+      }
+      out = 0;
+
+      char fmt = Formats::NIL;
+      fmt = mRef.get();
+      switch ((Formats)fmt) {
+         case Formats::FLOAT32: {
+            if (std::numeric_limits<T>::max() < std::numeric_limits<float>::max()) {
+               throw std::length_error("Narrowing conversion");
+            }
+            uint32_t data = 0;
+            mRef.read((char *)&data, 4);
+            data = ToLittleEndian(data);
+            memcpy(&out, &data, 4);
+            break;
+         }
+         case Formats::FLOAT64: {
+            if (std::numeric_limits<T>::max() < std::numeric_limits<double>::max()) {
+               throw std::length_error("Narrowing conversion");
+            }
+            uint64_t data = 0;
+            mRef.read((char *)&data, 8);
+            data = ToLittleEndian(data);
+            memcpy(&out, &data, 8);
+            break;
+         }
+         default: {
+            throw std::runtime_error("ByteArray does not match type float");
+         }
+      }
+   }
+
+  private:
+   /**
     * @brief Reads in a multibyte unsigned integer from the byte stream.
     * 
     * Type U must have a width capable of holding any possible value of type T.
@@ -699,7 +802,6 @@ class Unpacker {
       out = (T)ToLittleEndian((std::make_unsigned_t<T>)val);
    }
 
-  private:
    size_t mStreamStart {0};
    std::istream &mRef;
 };

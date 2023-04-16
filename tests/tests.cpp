@@ -307,3 +307,35 @@ TEST_CASE("String") {
       REQUIRE(unpacker.ByteCount() == 167158);
    }
 }
+
+TEST_CASE("Floating Point") {
+   std::stringstream stream(std::ios::binary | std::ios::out | std::ios::in);
+   float pi = 3.14159f;
+   float zero = 0.0f;
+   float max = FLT_MAX;
+   float infinity = std::numeric_limits<float>::infinity();
+   double min = DBL_MIN;
+   double sq2 = 1.14;
+   {
+      pack::Packer packer(stream);
+      packer.Serialize(pi, zero, max, infinity, min, sq2);
+      REQUIRE(packer.ByteCount() == 38);
+   }
+
+   {
+      pack::Unpacker unpacker(stream);
+      float one;
+      float two;
+      float three;
+      float four;
+      double five;
+      double six;
+      unpacker.Deserialize(one, two, three, four, five, six);
+      REQUIRE(std::abs(one - pi) < std::numeric_limits<float>::epsilon());
+      REQUIRE(std::abs(two - zero) < std::numeric_limits<float>::epsilon());
+      REQUIRE(std::abs(three - max) < std::numeric_limits<float>::epsilon());
+      REQUIRE(four == std::numeric_limits<float>::infinity());
+      REQUIRE(std::abs(five + min) < std::numeric_limits<double>::epsilon());
+      REQUIRE(std::abs(six - sq2) < std::numeric_limits<double>::epsilon());
+   }
+}
