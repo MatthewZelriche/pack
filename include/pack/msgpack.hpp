@@ -182,7 +182,7 @@ class Packer {
     * @param rest A parameter pack consisting of the rest of the values.
     */
    template<typename T, typename... Rest>
-   void Serialize(T next, Rest... rest) {
+   void Serialize(const T &next, const Rest &...rest) {
       Serialize(next);
       Serialize(rest...);
    }
@@ -289,7 +289,7 @@ class Packer {
     */
    template<typename T>
    requires StringType<T>
-   void Serialize(T val) {
+   void Serialize(const T &val) {
       std::string_view view(val);
       if (view.length() > UINT32_MAX) {
          throw std::length_error("String exceeds max length");
