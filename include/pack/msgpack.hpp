@@ -15,8 +15,6 @@
 // Requires twos-complement architecture
 // Requires IEEE 754 floating point precision types
 static_assert(0xFF == (uint8_t)-1);
-static_assert(std::endian::native == std::endian::little ||
-              std::endian::native == std::endian::big);
 static_assert(std::numeric_limits<double>::is_iec559);
 static_assert(sizeof(float) == 4);
 static_assert(sizeof(double) == 8);
@@ -80,7 +78,7 @@ enum Formats : Byte {
    POS_FIXINT   = 0b00000000, // 0XXXXXXX
    NEG_FIXINT   = 0b11100000, // 111xxxxx
    FIXMAP       = 0b10000000, // 1000xxxx   @TODO
-   FIXARR       = 0b10010000, // 1001xxxx   @TODO
+   FIXARR       = 0b10010000, // 1001xxxx
    FIXSTR       = 0b10100000, // 101xxxxx
 
    NIL          = 0b11000000, // 0xc0       @TODO
@@ -89,8 +87,8 @@ enum Formats : Byte {
    EXT8         = 0b11000111, // 0xc7       @TODO
    EXT16        = 0b11001000, // 0xc8       @TODO
    EXT32        = 0b11001001, // 0xc9       @TODO
-   FLOAT32      = 0b11001010, // 0xca       @TODO
-   FLOAT64      = 0b11001011, // 0xcb       @TODO
+   FLOAT32      = 0b11001010, // 0xca
+   FLOAT64      = 0b11001011, // 0xcb
    UINT8        = 0b11001100, // 0xcc
    UINT16       = 0b11001101, // 0xcd
    UINT32       = 0b11001110, // 0xce
@@ -107,17 +105,15 @@ enum Formats : Byte {
    STR8         = 0b11011001, // 0xd9
    STR16        = 0b11011010, // 0xda
    STR32        = 0b11011011, // 0xdb
-   ARR16        = 0b11011100, // 0xdc       @TODO
-   ARR32        = 0b11011101, // 0xdd       @TODO
+   ARR16        = 0b11011100, // 0xdc
+   ARR32        = 0b11011101, // 0xdd
    MAP16        = 0b11011110, // 0xde       @TODO
    MAP32        = 0b11011111, // 0xdf       @TODO
 };
-// clang-format on
 
 /*****************************************************************************************
  *************************************   Concepts   **************************************
  ****************************************************************************************/
-// clang-format off
 template<class T, class U>
 concept IsType = std::same_as<T, U>;
 
@@ -133,8 +129,10 @@ concept StringType = std::convertible_to<T, std::string_view>;
 
 template<class T>
 concept ArrayType = requires(T &a) { { std::span(a) }; } && !StringType<T>;
-// clang-format on
 
+// TODO: ResizableArray concept
+
+// clang-format on
 /*****************************************************************************************
  **************************************   Classes   **************************************
  ****************************************************************************************/
@@ -265,8 +263,7 @@ class Packer {
    void Serialize(T val) {
       if (val < 0 && val >= NEG_FIXINT_MIN) {
          mRef.put(val);
-      }
-      else if (val >= 0 && val <= POS_FIXINT_MAX) {
+      } else if (val >= 0 && val <= POS_FIXINT_MAX) {
          mRef.put(val);
       } else if (val <= INT8_MAX && val >= INT8_MIN) {
          mRef.put(Formats::INT8);
@@ -387,26 +384,20 @@ class Packer {
       if (span.size() <= 15) {
          uint8_t fmt = FIXARR_MASK | span.size();
          mRef.put(fmt);
-         
-         for (auto element : span) {
-            Serialize(element);
-         }
+
+         for (auto element : span) { Serialize(element); }
       } else if (span.size() <= UINT16_MAX) {
          mRef.put(Formats::ARR16);
          uint64_t bigEndian = ToBigEndian((uint16_t)span.size());
-         mRef.write((char*)&bigEndian, 2);
+         mRef.write((char *)&bigEndian, 2);
 
-         for (auto element : span) {
-            Serialize(element);
-         }
+         for (auto element : span) { Serialize(element); }
       } else if (span.size() <= UINT32_MAX) {
          mRef.put(Formats::ARR32);
          uint64_t bigEndian = ToBigEndian((uint32_t)span.size());
-         mRef.write((char*)&bigEndian, 4);
+         mRef.write((char *)&bigEndian, 4);
 
-         for (auto element : span) {
-            Serialize(element);
-         }
+         for (auto element : span) { Serialize(element); }
       } else {
          throw std::invalid_argument("Array exceeds max allowable size");
       }
@@ -617,8 +608,7 @@ class Unpacker {
                mRef.get(fmtOrData); // Pop out the stored val
                out = (int8_t)fmtOrData;
                break;
-            }
-            else if ((fmtOrData & POS_FIXINT_MASK) == 0) {
+            } else if ((fmtOrData & POS_FIXINT_MASK) == 0) {
                mRef.get(fmtOrData);
                out = (int8_t)fmtOrData;
                break;
@@ -831,13 +821,13 @@ class Unpacker {
       }
 
       char fmt = Formats::NIL;
-      fmt = mRef.peek();      // Nondestructive peek
+      fmt = mRef.peek(); // Nondestructive peek
 
       switch ((Formats)fmt) {
          case Formats::ARR16: {
             mRef.get(fmt); // pop the specifier
             ByteArray lenData = PeekMultiBytes(2);
-            uint16_t arrLen = ToLittleEndian(*(uint16_t*)lenData.data());
+            uint16_t arrLen = ToLittleEndian(*(uint16_t *)lenData.data());
 
             if (arrLen > outputLen) {
                mRef.unget(); // Put the format specifier back
@@ -847,15 +837,13 @@ class Unpacker {
             // Can safely modify more than 1 byte of the stream now.
             mRef.ignore(2);
 
-            for (uint16_t i = 0; i < arrLen; i++) {
-               Deserialize(out[i]);
-            }
+            for (uint16_t i = 0; i < arrLen; i++) { Deserialize(out[i]); }
             break;
          }
          case Formats::ARR32: {
             mRef.get(fmt); // pop the specifier
             ByteArray lenData = PeekMultiBytes(4);
-            uint32_t arrLen = ToLittleEndian(*(uint32_t*)lenData.data());
+            uint32_t arrLen = ToLittleEndian(*(uint32_t *)lenData.data());
 
             if (arrLen > outputLen) {
                mRef.unget(); // Put the format specifier back
@@ -865,9 +853,7 @@ class Unpacker {
             // Can safely modify more than 1 byte of the stream now.
             mRef.ignore(4);
 
-            for (uint32_t i = 0; i < arrLen; i++) {
-               Deserialize(out[i]);
-            }
+            for (uint32_t i = 0; i < arrLen; i++) { Deserialize(out[i]); }
             break;
          }
          default: {
@@ -879,9 +865,7 @@ class Unpacker {
                }
 
                mRef.get(fmt); // pop the specifier
-               for (uint8_t i = 0; i < arrLen; i++) {
-                  Deserialize(out[i]);
-               }
+               for (uint8_t i = 0; i < arrLen; i++) { Deserialize(out[i]); }
             } else {
                throw std::runtime_error("ByteArray does not match type array");
             }
@@ -892,19 +876,18 @@ class Unpacker {
   private:
    ByteArray PeekMultiBytes(size_t count) {
       std::streampos save = mRef.tellg();
+      std::streampos next = save;
       ByteArray arr;
 
-
       for (size_t i = 0; i < count; i++) {
-         mRef.seekg(save + i);
+         next += i;
+         mRef.seekg(next);
          arr.push_back(mRef.peek());
       }
 
       mRef.seekg(save);
       return arr;
    }
-
-
 
    /**
     * @brief Reads in a multibyte unsigned integer from the byte stream.

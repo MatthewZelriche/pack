@@ -343,15 +343,13 @@ TEST_CASE("Floating Point") {
 TEST_CASE("Arrays") {
    std::stringstream stream(std::ios::binary | std::ios::out | std::ios::in);
 
-      int arr1_in[4] = {5, 4, 3, 2 };
-      int arr2_in[] = {16, 15, 14, 13, 12, 11, 10, -1, -2, -3, -4, -5, -6, -7, -8, -9};
-      constexpr int len = UINT16_MAX + 20;
-      int arr3_in[len] = {0};
-      for (int i = 0; i < len; i++) {
-         arr3_in[i] = i;
-      }
-      std::array<int, 5> arr4_in = {3, -99999, 9, 0, 42};
-      std::vector<int> arr5_in = { -9142, -9143, -9144, -9145, -9146 };
+   int arr1_in[4] = {5, 4, 3, 2};
+   int arr2_in[] = {16, 15, 14, 13, 12, 11, 10, -1, -2, -3, -4, -5, -6, -7, -8, -9};
+   constexpr int len = UINT16_MAX + 20;
+   int arr3_in[len] = {0};
+   for (int i = 0; i < len; i++) { arr3_in[i] = i; }
+   std::array<int, 5> arr4_in = {3, -99999, 9, 0, 42};
+   std::vector<int> arr5_in = {-9142, -9143, -9144, -9145, -9146};
 
    {
       pack::Packer packer(stream);
@@ -375,18 +373,17 @@ TEST_CASE("Arrays") {
       int tooSmall[3];
       REQUIRE_THROWS_AS(unpacker.Deserialize(tooSmall), std::length_error);
       unpacker.Deserialize(arr1);
-      REQUIRE(std::memcmp((void*)arr1_in, (void*)arr1, 4 * sizeof(int)) == 0);
+      REQUIRE(std::memcmp((void *)arr1_in, (void *)arr1, 4 * sizeof(int)) == 0);
 
       int tooSmall2[14];
       REQUIRE_THROWS_AS(unpacker.Deserialize(tooSmall2), std::length_error);
       unpacker.Deserialize(arr2);
       REQUIRE(unpacker.ByteCount() == 24);
-      REQUIRE(std::memcmp((void*)arr2_in, (void*)arr2, 16 * sizeof(int)) == 0);
+      REQUIRE(std::memcmp((void *)arr2_in, (void *)arr2, 16 * sizeof(int)) == 0);
 
       unpacker.Deserialize(arr3, arr4, arr5);
-      REQUIRE(std::memcmp((void*)arr3_in, (void*)arr3, len * sizeof(int)) == 0);
+      REQUIRE(std::memcmp((void *)arr3_in, (void *)arr3, len * sizeof(int)) == 0);
       REQUIRE(arr4 == arr4_in);
       REQUIRE(arr5 == arr5_in);
-
    }
 }
