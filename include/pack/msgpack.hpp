@@ -8,6 +8,7 @@
 #include <istream>
 #include <bit>
 #include <string>
+#include <span>
 
 // Requires cpp20
 // Requires big or little endian architecture
@@ -71,6 +72,8 @@ constexpr uint8_t POS_FIXINT_MAX    = 0b1111111;
 constexpr int8_t NEG_FIXINT_MIN     = 0b11100000;
 constexpr uint8_t POS_FIXINT_MASK   = 0b10000000;
 constexpr uint8_t FIXSTR_MASK       = 0b10100000;
+constexpr uint8_t FIXARR_MASK       = 0b10010000;
+
 constexpr uint8_t FIXSTR_MAX        = 0b11111;
 
 enum Formats : Byte {
@@ -114,6 +117,7 @@ enum Formats : Byte {
 /*****************************************************************************************
  *************************************   Concepts   **************************************
  ****************************************************************************************/
+// clang-format off
 template<class T, class U>
 concept IsType = std::same_as<T, U>;
 
@@ -126,6 +130,10 @@ concept SignedInt =
 
 template<class T>
 concept StringType = std::convertible_to<T, std::string_view>;
+
+template<class T>
+concept ArrayType = requires(T &a) { { std::span(a) }; } && !StringType<T>;
+// clang-format on
 
 /*****************************************************************************************
  **************************************   Classes   **************************************
@@ -362,6 +370,46 @@ class Packer {
          mRef.clear();
          throw std::runtime_error("stream write error");
       };
+   }
+
+   template<typename T, size_t N>
+   requires(not IsType<T, char const>)
+   void Serialize(T (&arr)[N]) {
+      Serialize(std::span<T, N>(arr));
+   }
+
+   template<typename T>
+   requires ArrayType<T>
+   void Serialize(T arr) {
+      auto span = std::span(arr);
+      auto sz = span.size();
+
+      if (span.size() <= 15) {
+         uint8_t fmt = FIXARR_MASK | span.size();
+         mRef.put(fmt);
+         
+         for (auto element : span) {
+            Serialize(element);
+         }
+      } else if (span.size() <= UINT16_MAX) {
+         mRef.put(Formats::ARR16);
+         uint64_t bigEndian = ToBigEndian((uint16_t)span.size());
+         mRef.write((char*)&bigEndian, 2);
+
+         for (auto element : span) {
+            Serialize(element);
+         }
+      } else if (span.size() <= UINT32_MAX) {
+         mRef.put(Formats::ARR32);
+         uint64_t bigEndian = ToBigEndian((uint32_t)span.size());
+         mRef.write((char*)&bigEndian, 4);
+
+         for (auto element : span) {
+            Serialize(element);
+         }
+      } else {
+         throw std::invalid_argument("Array exceeds max allowable size");
+      }
    }
 
   private:
@@ -757,6 +805,68 @@ class Unpacker {
          }
          default: {
             throw std::runtime_error("ByteArray does not match type float");
+         }
+      }
+   }
+
+   template<typename T, size_t N>
+   requires(not IsType<T, char const>)
+   void Deserialize(T (&arr)[N]) {
+      Deserialize(arr, N);
+   }
+
+   template<typename T>
+   requires ArrayType<T>
+   void Deserialize(T &out) {
+      size_t len = std::span(out).size();
+      Deserialize(out, len);
+   }
+
+   template<typename T>
+   requires ArrayType<T>
+   void Deserialize(T &out, size_t len) {
+      if (mRef.peek() == EOF) {
+         mRef.clear();
+         throw std::invalid_argument("No more data to read");
+      }
+
+      char fmt = Formats::NIL;
+      fmt = mRef.peek();      // Nondestructive peek
+
+      switch ((Formats)fmt) {
+         case Formats::ARR16: {
+            mRef.get(fmt); // pop the specifier
+            uint16_t arrLen = 0;
+            mRef.read((char*)&arrLen, 2);
+            arrLen = ToLittleEndian(arrLen);
+
+            for (uint16_t i = 0; i < arrLen; i++) {
+               Deserialize(out[i]);
+            }
+            break;
+         }
+         case Formats::ARR32: {
+            mRef.get(fmt); // pop the specifier
+            uint32_t arrLen = 0;
+            mRef.read((char*)&arrLen, 4);
+            arrLen = ToLittleEndian(arrLen);
+
+            for (uint32_t i = 0; i < arrLen; i++) {
+               Deserialize(out[i]);
+            }
+            break;
+         }
+         default: {
+            if ((fmt & FIXARR_MASK) == FIXARR_MASK) {
+               uint8_t arrLen = fmt & 0b1111;
+
+               mRef.get(fmt); // pop the specifier
+               for (uint8_t i = 0; i < arrLen; i++) {
+                  Deserialize(out[i]);
+               }
+            } else {
+               throw std::runtime_error("ByteArray does not match type array");
+            }
          }
       }
    }
