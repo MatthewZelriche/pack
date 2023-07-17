@@ -372,10 +372,15 @@ TEST_CASE("Arrays") {
       std::vector<int> arr5;
       arr5.resize(5);
 
-      unpacker.Deserialize(arr1, arr2);
-      REQUIRE(unpacker.ByteCount() == 24);
-
+      int tooSmall[3];
+      REQUIRE_THROWS_AS(unpacker.Deserialize(tooSmall), std::length_error);
+      unpacker.Deserialize(arr1);
       REQUIRE(std::memcmp((void*)arr1_in, (void*)arr1, 4 * sizeof(int)) == 0);
+
+      int tooSmall2[14];
+      REQUIRE_THROWS_AS(unpacker.Deserialize(tooSmall2), std::length_error);
+      unpacker.Deserialize(arr2);
+      REQUIRE(unpacker.ByteCount() == 24);
       REQUIRE(std::memcmp((void*)arr2_in, (void*)arr2, 16 * sizeof(int)) == 0);
 
       unpacker.Deserialize(arr3, arr4, arr5);

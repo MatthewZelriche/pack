@@ -824,7 +824,7 @@ class Unpacker {
 
    template<typename T>
    requires ArrayType<T>
-   void Deserialize(T &out, size_t len) {
+   void Deserialize(T &out, size_t outputLen) {
       if (mRef.peek() == EOF) {
          mRef.clear();
          throw std::invalid_argument("No more data to read");
@@ -836,9 +836,16 @@ class Unpacker {
       switch ((Formats)fmt) {
          case Formats::ARR16: {
             mRef.get(fmt); // pop the specifier
-            uint16_t arrLen = 0;
-            mRef.read((char*)&arrLen, 2);
-            arrLen = ToLittleEndian(arrLen);
+            ByteArray lenData = PeekMultiBytes(2);
+            uint16_t arrLen = ToLittleEndian(*(uint16_t*)lenData.data());
+
+            if (arrLen > outputLen) {
+               mRef.unget(); // Put the format specifier back
+               throw std::length_error("Input array is not large enough");
+            }
+
+            // Can safely modify more than 1 byte of the stream now.
+            mRef.ignore(2);
 
             for (uint16_t i = 0; i < arrLen; i++) {
                Deserialize(out[i]);
@@ -847,9 +854,16 @@ class Unpacker {
          }
          case Formats::ARR32: {
             mRef.get(fmt); // pop the specifier
-            uint32_t arrLen = 0;
-            mRef.read((char*)&arrLen, 4);
-            arrLen = ToLittleEndian(arrLen);
+            ByteArray lenData = PeekMultiBytes(4);
+            uint32_t arrLen = ToLittleEndian(*(uint32_t*)lenData.data());
+
+            if (arrLen > outputLen) {
+               mRef.unget(); // Put the format specifier back
+               throw std::length_error("Input array is not large enough");
+            }
+
+            // Can safely modify more than 1 byte of the stream now.
+            mRef.ignore(4);
 
             for (uint32_t i = 0; i < arrLen; i++) {
                Deserialize(out[i]);
@@ -859,6 +873,10 @@ class Unpacker {
          default: {
             if ((fmt & FIXARR_MASK) == FIXARR_MASK) {
                uint8_t arrLen = fmt & 0b1111;
+
+               if (arrLen > outputLen) {
+                  throw std::length_error("Input array is not large enough");
+               }
 
                mRef.get(fmt); // pop the specifier
                for (uint8_t i = 0; i < arrLen; i++) {
@@ -872,6 +890,22 @@ class Unpacker {
    }
 
   private:
+   ByteArray PeekMultiBytes(size_t count) {
+      std::streampos save = mRef.tellg();
+      ByteArray arr;
+
+
+      for (size_t i = 0; i < count; i++) {
+         mRef.seekg(save + i);
+         arr.push_back(mRef.peek());
+      }
+
+      mRef.seekg(save);
+      return arr;
+   }
+
+
+
    /**
     * @brief Reads in a multibyte unsigned integer from the byte stream.
     * 
