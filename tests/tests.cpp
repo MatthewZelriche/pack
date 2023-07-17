@@ -153,24 +153,24 @@ TEST_CASE("Signed Integer") {
       int32_t val2 = INT8_MIN;
       int64_t val3 = INT8_MAX;
       packer.Serialize(val1, val2, val3);
-      REQUIRE(packer.ByteCount() == 9);
+      REQUIRE(packer.ByteCount() == 7);
 
       // Test int16 (3 bytes)
       int16_t val4 = -32001;
       int32_t val5 = 29487;
       packer.Serialize(val4, val5);
-      REQUIRE(packer.ByteCount() == 15);
+      REQUIRE(packer.ByteCount() == 13);
 
       // Test int32 (5 bytes)
       int32_t val6 = INT32_MAX;
       int64_t val7 = INT32_MIN;
       packer.Serialize(val6, val7);
-      REQUIRE(packer.ByteCount() == 25);
+      REQUIRE(packer.ByteCount() == 23);
 
       // Test int64 (9 bytes)
       int64_t val8 = INT64_MIN;
       packer.Serialize(val8);
-      REQUIRE(packer.ByteCount() == 34);
+      REQUIRE(packer.ByteCount() == 32);
    }
 
    {
@@ -188,7 +188,7 @@ TEST_CASE("Signed Integer") {
       REQUIRE(val1 == 100);
       REQUIRE(val2 == INT8_MIN);
       REQUIRE(val3 == INT8_MAX);
-      REQUIRE(unpacker.ByteCount() == 9);
+      REQUIRE(unpacker.ByteCount() == 7);
 
       int8_t narrow16;
       REQUIRE_THROWS_AS(unpacker.Deserialize(narrow16), std::length_error);
@@ -197,7 +197,7 @@ TEST_CASE("Signed Integer") {
       unpacker.Deserialize(val4, val5);
       REQUIRE(val4 == -32001);
       REQUIRE(val5 == 29487);
-      REQUIRE(unpacker.ByteCount() == 15);
+      REQUIRE(unpacker.ByteCount() == 13);
 
       int16_t narrow32;
       REQUIRE_THROWS_AS(unpacker.Deserialize(narrow32), std::length_error);
@@ -206,14 +206,14 @@ TEST_CASE("Signed Integer") {
       unpacker.Deserialize(val6, val7);
       REQUIRE(val6 == INT32_MAX);
       REQUIRE(val7 == INT32_MIN);
-      REQUIRE(unpacker.ByteCount() == 25);
+      REQUIRE(unpacker.ByteCount() == 23);
 
       int32_t narrow64;
       REQUIRE_THROWS_AS(unpacker.Deserialize(narrow64), std::length_error);
       int64_t val8;
       unpacker.Deserialize(val8);
       REQUIRE(val8 == INT64_MIN);
-      REQUIRE(unpacker.ByteCount() == 34);
+      REQUIRE(unpacker.ByteCount() == 32);
 
       int64_t invalid;
       REQUIRE_THROWS_AS(unpacker.Deserialize(invalid), std::invalid_argument);

@@ -257,6 +257,9 @@ class Packer {
    void Serialize(T val) {
       if (val < 0 && val >= NEG_FIXINT_MIN) {
          mRef.put(val);
+      }
+      else if (val >= 0 && val <= POS_FIXINT_MAX) {
+         mRef.put(val);
       } else if (val <= INT8_MAX && val >= INT8_MIN) {
          mRef.put(Formats::INT8);
          mRef.put(val);
@@ -564,6 +567,11 @@ class Unpacker {
             if ((fmtOrData & NEG_FIXINT_MIN) == NEG_FIXINT_MIN) {
                // Negative fixint
                mRef.get(fmtOrData); // Pop out the stored val
+               out = (int8_t)fmtOrData;
+               break;
+            }
+            else if ((fmtOrData & POS_FIXINT_MASK) == 0) {
+               mRef.get(fmtOrData);
                out = (int8_t)fmtOrData;
                break;
             } else {
