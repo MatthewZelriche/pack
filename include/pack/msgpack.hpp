@@ -876,12 +876,10 @@ class Unpacker {
   private:
    ByteArray PeekMultiBytes(size_t count) {
       std::streampos save = mRef.tellg();
-      std::streampos next = save;
       ByteArray arr;
 
       for (size_t i = 0; i < count; i++) {
-         next += i;
-         mRef.seekg(next);
+         mRef.seekg(save + std::streamoff(i));
          arr.push_back(mRef.peek());
       }
 
