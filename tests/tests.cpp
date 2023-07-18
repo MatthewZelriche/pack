@@ -384,8 +384,6 @@ TEST_CASE("Arrays") {
       REQUIRE(arr4 == arr4_in);
 
       std::vector<int> arr5;
-      REQUIRE_THROWS_AS(unpacker.Deserialize(arr5), std::length_error);
-      arr5.resize(5);
       unpacker.Deserialize(arr5);
       REQUIRE(arr5 == arr5_in);
    }

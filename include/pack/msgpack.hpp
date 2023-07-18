@@ -864,6 +864,59 @@ class Unpacker {
       }
    }
 
+   template<typename T>
+   void Deserialize(std::vector<T> &out) {
+      if (mRef.peek() == EOF) {
+         mRef.clear();
+         throw std::invalid_argument("No more data to read");
+      }
+
+      char fmt = Formats::NIL;
+      fmt = mRef.peek(); // Nondestructive peek
+
+      switch ((Formats)fmt) {
+         case Formats::ARR16: {
+            mRef.get(fmt); // pop the specifier
+            uint16_t arrLen = ToLittleEndian(PeekMultiBytesUint<uint16_t>());
+
+            // Can safely modify more than 1 byte of the stream now.
+            mRef.ignore(2);
+
+            for (uint16_t i = 0; i < arrLen; i++) {
+               out.resize(arrLen);
+               Deserialize(out[i]);
+            }
+            break;
+         }
+         case Formats::ARR32: {
+            mRef.get(fmt); // pop the specifier
+            uint32_t arrLen = ToLittleEndian(PeekMultiBytesUint<uint32_t>());
+
+            // Can safely modify more than 1 byte of the stream now.
+            mRef.ignore(4);
+
+            for (uint32_t i = 0; i < arrLen; i++) {
+               out.resize(arrLen);
+               Deserialize(out[i]);
+            }
+            break;
+         }
+         default: {
+            if ((fmt & FIXARR_MASK) == FIXARR_MASK) {
+               uint8_t arrLen = fmt & 0b1111;
+
+               mRef.get(fmt); // pop the specifier
+               for (uint8_t i = 0; i < arrLen; i++) {
+                  out.resize(arrLen);
+                  Deserialize(out[i]);
+               }
+            } else {
+               throw std::runtime_error("ByteArray does not match type array");
+            }
+         }
+      }
+   }
+
   private:
    template<typename T>
    T PeekMultiBytesUint() {
@@ -930,5 +983,4 @@ class Unpacker {
    size_t mStreamStart {0};
    std::istream &mRef;
 };
-
 }; // namespace pack
