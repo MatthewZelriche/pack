@@ -96,50 +96,35 @@ concept ArrayType = requires(T &a) { { std::span(a) }; } && !StringType<T>;
 // clang-format on
 
 /*****************************************************************************************
- ********************************   Endian Converters   **********************************
+ *********************************   Byte Utilities   ************************************
  ****************************************************************************************/
-#define PACK_BIG_ENDIAN_FN(type, fnName)                          \
-   inline type ToBigEndian(type in) {                             \
-      if constexpr (std::endian::native == std::endian::little) { \
-         return fnName(in);                                       \
-      } else {                                                    \
-         return in;                                               \
-      }                                                           \
-   }
-
-#define PACK_LITTLE_ENDIAN_FN(type, fnName)                       \
-   inline type ToLittleEndian(type in) {                          \
-      if constexpr (std::endian::native == std::endian::little) { \
-         return fnName(in);                                       \
-      } else {                                                    \
-         return in;                                               \
-      }                                                           \
-   }
-
 template<typename T>
-T BytesToType(Byte *bytes, size_t len) {
-   T res;
-   std::memcpy(&res, bytes, len);
-   return res;
+requires std::has_unique_object_representations_v<T>
+T Byteswap(T value) {
+   auto temp = std::bit_cast<std::array<uint8_t, sizeof(T)>>(value);
+   std::ranges::reverse(temp);
+   return std::bit_cast<T>(temp);
 }
 
-#ifdef _MSC_VER
-#include <stdlib.h>
-PACK_BIG_ENDIAN_FN(uint16_t, _byteswap_ushort)
-PACK_BIG_ENDIAN_FN(uint32_t, _byteswap_ulong)
-PACK_BIG_ENDIAN_FN(uint64_t, _byteswap_uint64)
-PACK_LITTLE_ENDIAN_FN(uint16_t, _byteswap_ushort)
-PACK_LITTLE_ENDIAN_FN(uint32_t, _byteswap_ulong)
-PACK_LITTLE_ENDIAN_FN(uint64_t, _byteswap_uint64)
-#else
-#include <byteswap.h>
-PACK_BIG_ENDIAN_FN(uint16_t, bswap_16)
-PACK_BIG_ENDIAN_FN(uint32_t, bswap_32)
-PACK_BIG_ENDIAN_FN(uint64_t, bswap_64)
-PACK_LITTLE_ENDIAN_FN(uint16_t, bswap_16)
-PACK_LITTLE_ENDIAN_FN(uint32_t, bswap_32)
-PACK_LITTLE_ENDIAN_FN(uint64_t, bswap_64)
-#endif
+template<typename T>
+requires std::has_unique_object_representations_v<T>
+T ToBigEndian(T in) {
+   if constexpr (std::endian::native == std::endian::little) {
+      return Byteswap(in);
+   } else {
+      return in;
+   }
+}
+
+template<typename T>
+requires std::has_unique_object_representations_v<T>
+T ToLittleEndian(T in) {
+   if constexpr (std::endian::native == std::endian::little) {
+      return Byteswap(in);
+   } else {
+      return in;
+   }
+}
 
 /*****************************************************************************************
  **************************************   Classes   **************************************
