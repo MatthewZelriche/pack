@@ -10,6 +10,8 @@
 #include <string>
 #include <span>
 
+namespace pack {
+
 // Requires cpp20
 // Requires big or little endian architecture
 // Requires twos-complement architecture
@@ -18,47 +20,6 @@ static_assert(0xFF == (uint8_t)-1);
 static_assert(std::numeric_limits<double>::is_iec559);
 static_assert(sizeof(float) == 4);
 static_assert(sizeof(double) == 8);
-
-/*****************************************************************************************
- ********************************   Endian Converters   **********************************
- ****************************************************************************************/
-#define PACK_BIG_ENDIAN_FN(type, fnName)                          \
-   inline type ToBigEndian(type in) {                             \
-      if constexpr (std::endian::native == std::endian::little) { \
-         return fnName(in);                                       \
-      } else {                                                    \
-         return in;                                               \
-      }                                                           \
-   }
-
-#define PACK_LITTLE_ENDIAN_FN(type, fnName)                       \
-   inline type ToLittleEndian(type in) {                          \
-      if constexpr (std::endian::native == std::endian::little) { \
-         return fnName(in);                                       \
-      } else {                                                    \
-         return in;                                               \
-      }                                                           \
-   }
-
-namespace pack {
-
-#ifdef _MSC_VER
-#include <stdlib.h>
-PACK_BIG_ENDIAN_FN(uint16_t, _byteswap_ushort)
-PACK_BIG_ENDIAN_FN(uint32_t, _byteswap_ulong)
-PACK_BIG_ENDIAN_FN(uint64_t, _byteswap_uint64)
-PACK_LITTLE_ENDIAN_FN(uint16_t, _byteswap_ushort)
-PACK_LITTLE_ENDIAN_FN(uint32_t, _byteswap_ulong)
-PACK_LITTLE_ENDIAN_FN(uint64_t, _byteswap_uint64)
-#else
-#include <byteswap.h>
-PACK_BIG_ENDIAN_FN(uint16_t, bswap_16)
-PACK_BIG_ENDIAN_FN(uint32_t, bswap_32)
-PACK_BIG_ENDIAN_FN(uint64_t, bswap_64)
-PACK_LITTLE_ENDIAN_FN(uint16_t, bswap_16)
-PACK_LITTLE_ENDIAN_FN(uint32_t, bswap_32)
-PACK_LITTLE_ENDIAN_FN(uint64_t, bswap_64)
-#endif
 
 /*****************************************************************************************
  ***********************************   Msgpack Defs   ************************************
@@ -133,6 +94,53 @@ concept ArrayType = requires(T &a) { { std::span(a) }; } && !StringType<T>;
 // TODO: ResizableArray concept
 
 // clang-format on
+
+/*****************************************************************************************
+ ********************************   Endian Converters   **********************************
+ ****************************************************************************************/
+#define PACK_BIG_ENDIAN_FN(type, fnName)                          \
+   inline type ToBigEndian(type in) {                             \
+      if constexpr (std::endian::native == std::endian::little) { \
+         return fnName(in);                                       \
+      } else {                                                    \
+         return in;                                               \
+      }                                                           \
+   }
+
+#define PACK_LITTLE_ENDIAN_FN(type, fnName)                       \
+   inline type ToLittleEndian(type in) {                          \
+      if constexpr (std::endian::native == std::endian::little) { \
+         return fnName(in);                                       \
+      } else {                                                    \
+         return in;                                               \
+      }                                                           \
+   }
+
+template<typename T>
+T BytesToType(Byte *bytes, size_t len) {
+   T res;
+   std::memcpy(&res, bytes, len);
+   return res;
+}
+
+#ifdef _MSC_VER
+#include <stdlib.h>
+PACK_BIG_ENDIAN_FN(uint16_t, _byteswap_ushort)
+PACK_BIG_ENDIAN_FN(uint32_t, _byteswap_ulong)
+PACK_BIG_ENDIAN_FN(uint64_t, _byteswap_uint64)
+PACK_LITTLE_ENDIAN_FN(uint16_t, _byteswap_ushort)
+PACK_LITTLE_ENDIAN_FN(uint32_t, _byteswap_ulong)
+PACK_LITTLE_ENDIAN_FN(uint64_t, _byteswap_uint64)
+#else
+#include <byteswap.h>
+PACK_BIG_ENDIAN_FN(uint16_t, bswap_16)
+PACK_BIG_ENDIAN_FN(uint32_t, bswap_32)
+PACK_BIG_ENDIAN_FN(uint64_t, bswap_64)
+PACK_LITTLE_ENDIAN_FN(uint16_t, bswap_16)
+PACK_LITTLE_ENDIAN_FN(uint32_t, bswap_32)
+PACK_LITTLE_ENDIAN_FN(uint64_t, bswap_64)
+#endif
+
 /*****************************************************************************************
  **************************************   Classes   **************************************
  ****************************************************************************************/
@@ -826,8 +834,7 @@ class Unpacker {
       switch ((Formats)fmt) {
          case Formats::ARR16: {
             mRef.get(fmt); // pop the specifier
-            ByteArray lenData = PeekMultiBytes(2);
-            uint16_t arrLen = ToLittleEndian(*(uint16_t *)lenData.data());
+            uint16_t arrLen = ToLittleEndian(PeekMultiBytesUint<uint16_t>());
 
             if (arrLen > outputLen) {
                mRef.unget(); // Put the format specifier back
@@ -842,8 +849,7 @@ class Unpacker {
          }
          case Formats::ARR32: {
             mRef.get(fmt); // pop the specifier
-            ByteArray lenData = PeekMultiBytes(4);
-            uint32_t arrLen = ToLittleEndian(*(uint32_t *)lenData.data());
+            uint32_t arrLen = ToLittleEndian(PeekMultiBytesUint<uint32_t>());
 
             if (arrLen > outputLen) {
                mRef.unget(); // Put the format specifier back
@@ -874,17 +880,18 @@ class Unpacker {
    }
 
   private:
-   ByteArray PeekMultiBytes(size_t count) {
+   template<typename T>
+   T PeekMultiBytesUint() {
+      std::array<Byte, sizeof(T)> arr;
       std::streampos save = mRef.tellg();
-      ByteArray arr;
 
-      for (size_t i = 0; i < count; i++) {
+      for (size_t i = 0; i < sizeof(T); i++) {
          mRef.seekg(save + std::streamoff(i));
-         arr.push_back(mRef.peek());
+         arr[i] = mRef.peek();
       }
 
       mRef.seekg(save);
-      return arr;
+      return std::bit_cast<T>(arr);
    }
 
    /**
