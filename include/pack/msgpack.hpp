@@ -9,6 +9,7 @@
 #include <bit>
 #include <string>
 #include <span>
+#include <array>
 
 namespace pack {
 
